@@ -1,0 +1,802 @@
+# Registro de fuentes de datos.
+#
+# Esto no es documentacion: es un control que se aplica al arrancar. El estado de
+# cada fuente decide si se puede instanciar, y en produccion una fuente que no
+# este aprobada hace fallar el arranque en vez de colarse sin que nadie se entere.
+#
+# El esquema es el del §22 del encargo. Los estados:
+#
+#   APPROVED                     se puede usar en produccion
+#   APPROVED_WITH_RESTRICTIONS   se usa, con sus condiciones anotadas
+#   DEVELOPMENT_ONLY             funciona en local; en produccion, error al arrancar
+#   REJECTED                     no se instancia nunca
+#   NEEDS_REVIEW                 no se instancia nunca, y ademas hay trabajo pendiente
+#
+# El razonamiento detras de cada estado esta en docs/data-licensing.md, con el
+# enlace a los terminos oficiales de cada fuente.
+#
+# AVISO: `verificacion: PROVISIONAL` significa que el enlace oficial esta
+# localizado pero NADIE HA LEIDO EL TEXTO. Un PROVISIONAL favorable no es permiso
+# para usar la fuente con clientes de pago; es una hipotesis con un sitio donde
+# comprobarla. `last_verified: null` en todas las fuentes quiere decir exactamente
+# eso: hoy no hay ninguna verificada.
+
+version: 1
+
+# Como se decide si estamos en produccion.
+#
+# El valor por defecto es `produccion` a proposito, y va en contra de lo comodo.
+# Si el defecto fuera `desarrollo`, olvidarse de poner la variable en el
+# despliegue dejaria correr en produccion una fuente con problemas de licencia,
+# en silencio. Con este defecto, olvidarse de ponerla en local da un error
+# ruidoso que se arregla en diez segundos. El error barato es el de fallar.
+entorno:
+  variable: LALONJA_ENTORNO
+  por_defecto: produccion
+  estados_aptos_en_produccion:
+    - APPROVED
+    - APPROVED_WITH_RESTRICTIONS
+  estados_aptos_en_desarrollo:
+    - APPROVED
+    - APPROVED_WITH_RESTRICTIONS
+    - DEVELOPMENT_ONLY
+
+fuentes:
+
+  # --------------------------------------------------------------------------
+  # Tier A — nucleo. Oficiales, gratuitas, aptas para produccion.
+  # --------------------------------------------------------------------------
+
+  - id: sec_edgar
+    name: SEC EDGAR
+    country: us
+    data_type: [fundamentales, filings, insiders, corporate_actions, metadatos]
+    source_url: https://www.sec.gov/search-filings
+    api_url: https://data.sec.gov
+    access_method: rest_json
+    requires_api_key: false
+    free: true
+    commercial_use: no_localizado
+    storage_allowed: no_localizado
+    redistribution_allowed: no_localizado
+    attribution_required: false
+    rate_limit: "10 req/s agregadas por IP. User-agent declarado obligatorio."
+    update_frequency: continua
+    historical_depth: "XBRL desde ~2009; filings desde 1993"
+    license: no_localizada
+    terms_url: https://www.sec.gov/about/webmaster-frequently-asked-questions
+    status: APPROVED_WITH_RESTRICTIONS
+    tier: 1
+    priority: 1
+    verification: PROVISIONAL
+    last_verified: null
+    adaptador: null
+    notes: >
+      No se ha localizado ninguna restriccion, que no es lo mismo que haber leido
+      una autorizacion. Es el punto 1 de la verificacion obligatoria y el mayor
+      riesgo del proyecto por concentracion. Postura conservadora que ademas es
+      buena ingenieria: no redistribuimos filings, extraemos cifras y enlazamos
+      al original. Los limites tecnicos (10 req/s, user-agent) van en el
+      conector, no en la configuracion.
+
+  - id: cvm_dados_abertos
+    name: CVM — Portal de Dados Abertos
+    country: br
+    data_type: [fundamentales, filings, insiders, metadatos]
+    source_url: https://dados.cvm.gov.br/
+    api_url: https://dados.cvm.gov.br/dataset/
+    access_method: descarga_csv
+    requires_api_key: false
+    free: true
+    commercial_use: probable
+    storage_allowed: no_localizado
+    redistribution_allowed: por_dataset
+    attribution_required: no_localizado
+    rate_limit: no_publicado
+    update_frequency: semanal
+    historical_depth: "DFP e ITR por ejercicio"
+    license: por_dataset
+    terms_url: https://dados.cvm.gov.br/about
+    status: APPROVED_WITH_RESTRICTIONS
+    tier: 1
+    priority: 2
+    verification: PROVISIONAL
+    last_verified: null
+    adaptador: null
+    notes: >
+      La licencia va en el metadato de CADA dataset y puede cambiar en cualquier
+      momento, asi que el conector debe releer los metadatos en cada ingesta y
+      parar si cambian. Datasets: cia_aberta-doc-dfp, -itr, -fre, -vlmo, -fca.
+      `vlmo` es el equivalente brasileno del Form 4 y es lo que salva a Brasil.
+
+  - id: ecb_fx
+    name: Banco Central Europeo — tipos de referencia
+    country: global
+    data_type: [divisas, macro]
+    source_url: https://data.ecb.europa.eu/
+    api_url: https://data-api.ecb.europa.eu/service/data/
+    access_method: sdmx_rest
+    requires_api_key: false
+    free: true
+    commercial_use: si
+    storage_allowed: si
+    redistribution_allowed: si
+    attribution_required: true
+    rate_limit: no_publicado
+    update_frequency: "diaria, ~16:00 CET en dias habiles TARGET"
+    historical_depth: "desde 1999 en las divisas principales"
+    license: "reutilizacion libre citando la fuente y sin modificar los datos"
+    terms_url: https://www.ecb.europa.eu/services/using-our-site/disclaimer/html/index.en.html
+    status: APPROVED_WITH_RESTRICTIONS
+    tier: 1
+    priority: 3
+    verification: PROVISIONAL
+    last_verified: null
+    adaptador: null
+    notes: >
+      BRL e INR estan entre las 29 divisas, asi que cubre el §8 entero. Dos
+      cautelas que van al codigo: es un tipo de referencia de las 16:00 CET, no
+      de mercado; y el calendario es TARGET, no el de cada bolsa (regla: ultimo
+      disponible, nunca interpolar hacia adelante). Un cruce calculado por
+      nosotros se marca `is_derived`, porque los terminos piden no modificar el
+      dato y un cruce derivado es un dato nuestro, no del BCE.
+
+  - id: world_bank
+    name: Banco Mundial — WDI y Pink Sheet
+    country: global
+    data_type: [macro, materias_primas]
+    source_url: https://data.worldbank.org
+    api_url: https://api.worldbank.org/v2/
+    access_method: rest_json
+    requires_api_key: false
+    free: true
+    commercial_use: si
+    storage_allowed: si
+    redistribution_allowed: si
+    attribution_required: true
+    rate_limit: no_publicado
+    update_frequency: "anual la mayoria; mensual el Pink Sheet"
+    historical_depth: "desde 1960 en muchas series"
+    license: "CC BY 4.0 + terminos adicionales"
+    terms_url: https://datacatalog.worldbank.org/public-licenses
+    status: APPROVED_WITH_RESTRICTIONS
+    tier: 1
+    priority: 4
+    verification: PROVISIONAL
+    last_verified: null
+    adaptador: null
+    notes: >
+      Atribucion con formato exigido —`The World Bank: Dataset name: Data
+      source`— y con obligacion de propagarla a sublicenciatarios, lo que
+      condiciona el frontal y la API, no solo un pie de pagina. Trampa: hay
+      datasets de terceros dentro del catalogo que pueden no ser
+      redistribuibles. El Pink Sheet da Brent, cobre LME y oro, pero MENSUAL.
+
+  - id: gdelt
+    name: The GDELT Project
+    country: global
+    data_type: [noticias, sentimiento]
+    source_url: https://gdeltproject.org
+    api_url: https://api.gdeltproject.org/api/v2/doc/doc
+    access_method: rest_json
+    requires_api_key: false
+    free: true
+    commercial_use: si
+    storage_allowed: si
+    redistribution_allowed: si
+    attribution_required: true
+    rate_limit: no_publicado
+    update_frequency: "15 minutos"
+    historical_depth: "1979 en adelante segun dataset"
+    license: "uso ilimitado academico, comercial o gubernamental, sin coste"
+    terms_url: https://gdeltproject.org/about.html
+    status: APPROVED_WITH_RESTRICTIONS
+    tier: 1
+    priority: 5
+    verification: PROVISIONAL
+    last_verified: null
+    adaptador: null
+    notes: >
+      La licencia mas permisiva de todo el research, sin competencia cercana. El
+      riesgo no es legal, es de calidad: GDELT indexa entidades por nombre y no
+      por ticker, asi que la asociacion empresa-articulo es aproximada y hay que
+      medir su precision antes de publicar el numero; y el tono es un promedio
+      lexico, no sentimiento financiero, asi que solo se publica relativo a la
+      propia historia de la empresa.
+
+  # --------------------------------------------------------------------------
+  # Tier B — complementarias. Gratuitas con restricciones asumibles.
+  # --------------------------------------------------------------------------
+
+  - id: cnmv
+    name: CNMV
+    country: es
+    data_type: [filings, insiders, cortos, corporate_actions, metadatos]
+    source_url: https://www.cnmv.es
+    api_url: null
+    access_method: "descarga_zip_xml + consulta_web"
+    requires_api_key: false
+    free: true
+    commercial_use: probable
+    storage_allowed: no_localizado
+    redistribution_allowed: no_localizado
+    attribution_required: probable
+    rate_limit: no_publicado
+    update_frequency: "continua en comunicaciones; semestral en informacion periodica"
+    historical_depth: "registros oficiales, variable por tipo"
+    license: no_localizada
+    terms_url: https://cnmv.es/portal/utilidades/notalegal.aspx
+    status: APPROVED_WITH_RESTRICTIONS
+    tier: 2
+    priority: 8
+    verification: PROVISIONAL
+    last_verified: null
+    adaptador: null
+    notes: >
+      El `commercial_use: probable` sale de la Ley 37/2007 y de la Directiva (UE)
+      2019/1024, que contemplan expresamente la reutilizacion comercial. Pero la
+      ley marco no sustituye a la condicion concreta del organismo: falta la nota
+      legal de la CNMV, que es el punto 2 de la verificacion obligatoria. Se pone
+      atribucion desde el principio porque cuesta cero y evita rehacer el frontal.
+      En V1 solo se toma lo estructurado (comunicaciones, cortos, directivos,
+      participaciones); los estados financieros son V1.1 porque llegan como
+      documento y no como campos.
+
+  - id: fred
+    name: FRED — Federal Reserve Bank of St. Louis
+    country: us
+    data_type: [macro]
+    source_url: https://fred.stlouisfed.org
+    api_url: https://api.stlouisfed.org/fred/
+    access_method: rest_json
+    requires_api_key: true
+    free: true
+    commercial_use: por_serie
+    storage_allowed: si
+    redistribution_allowed: por_serie
+    attribution_required: por_serie
+    rate_limit: "FRED no cobra ni contabiliza consumo"
+    update_frequency: "segun serie"
+    historical_depth: "segun serie"
+    license: por_serie
+    terms_url: https://fred.stlouisfed.org/docs/api/terms_of_use.html
+    status: APPROVED_WITH_RESTRICTIONS
+    tier: 2
+    priority: 6
+    verification: PROVISIONAL
+    last_verified: null
+    adaptador: null
+    notes: >
+      FRED no es una fuente, es un agregador. Las series propias de la Fed y de
+      las agencias federales no estan en el mismo regimen que las licenciadas de
+      terceros (S&P/Case-Shiller, NAHB, ICE, Haver). El conector NO debe aceptar
+      un series_id arbitrario: lista blanca, con el titular de cada serie
+      anotado. Cualquier otro diseno convierte "hay que comprobar la serie" en
+      "alguien se acordara".
+
+  - id: investor_relations
+    name: Investor Relations de emisores
+    country: global
+    data_type: [fundamentales, filings, corporate_actions]
+    source_url: null
+    api_url: null
+    access_method: "rss + descarga_documento"
+    requires_api_key: false
+    free: true
+    commercial_use: si
+    storage_allowed: "si, copia privada para procesar"
+    redistribution_allowed: no
+    attribution_required: true
+    rate_limit: "el que pida robots.txt"
+    update_frequency: por_evento
+    historical_depth: "variable por emisor"
+    license: "copyright del emisor"
+    terms_url: null
+    status: APPROVED_WITH_RESTRICTIONS
+    tier: 2
+    priority: 9
+    verification: PROVISIONAL
+    last_verified: null
+    adaptador: null
+    notes: >
+      Los documentos son publicos pero tienen copyright del emisor: se pueden
+      descargar, procesar, extraer cifras y citar con enlace al original; no se
+      pueden republicar enteros ni alojar copias publicas. Por eso la copia local
+      es privada por diseno y lo que se publica es la URL de origen.
+      `scrape_allowed` se lee de robots.txt en cada pasada y se guarda; no se
+      supone y no se decide una vez.
+
+  # --------------------------------------------------------------------------
+  # Pendientes de revision. No se instancian.
+  # --------------------------------------------------------------------------
+
+  - id: finra_short_interest
+    name: FINRA — Equity Short Interest
+    country: us
+    data_type: [cortos]
+    source_url: https://www.finra.org/finra-data/browse-catalog/equity-short-interest
+    api_url: https://api.finra.org/data/group/otcMarket/name/consolidatedShortInterest
+    access_method: rest_json
+    requires_api_key: no_localizado
+    free: true
+    commercial_use: no_localizado
+    storage_allowed: no_localizado
+    redistribution_allowed: no_localizado
+    attribution_required: no_localizado
+    rate_limit: no_localizado
+    update_frequency: "bimensual (Regla 4560)"
+    historical_depth: "5 anos en rejilla; archivo historico por descarga"
+    license: no_localizada
+    terms_url: https://www.finra.org/finra-data/browse-catalog/equity-short-interest
+    status: NEEDS_REVIEW
+    tier: 2
+    priority: 7
+    verification: PROVISIONAL
+    last_verified: null
+    adaptador: null
+    notes: >
+      El dato es excelente —es regulatorio, no una estimacion— y tapa un hueco
+      que no tapa nadie mas. Pero es la unica fuente de la lista corta donde no
+      se ha localizado NINGUNA condicion de uso, y eso no se puede confundir con
+      que no las haya. Punto 7 de la verificacion obligatoria.
+
+  - id: imf
+    name: Fondo Monetario Internacional
+    country: global
+    data_type: [macro]
+    source_url: https://www.imf.org/en/Data
+    api_url: https://api.imf.org/external/sdmx/3.0
+    access_method: sdmx_rest
+    requires_api_key: false
+    free: true
+    commercial_use: contradictorio
+    storage_allowed: no_localizado
+    redistribution_allowed: contradictorio
+    attribution_required: true
+    rate_limit: no_localizado
+    update_frequency: "segun dataset"
+    historical_depth: "larga"
+    license: contradictoria
+    terms_url: https://www.imf.org/en/about/copyright-and-terms
+    status: NEEDS_REVIEW
+    tier: 3
+    priority: 99
+    verification: PROVISIONAL
+    last_verified: null
+    adaptador: null
+    notes: >
+      Tres clausulas que se contradicen: regla general de uso personal no
+      comercial; terminos especiales para datos estadisticos que permiten crear
+      obras derivadas y distribuir; y un "para uso comercial, escribanos a pedir
+      permiso". No se resuelve sin leer el texto completo, y es exactamente el
+      caso que el encargo pedia no dar por bueno. No hace falta para el MVP: el
+      Banco Mundial da lo mismo bajo CC BY 4.0. Se manda el correo en paralelo.
+
+  - id: sebi
+    name: SEBI
+    country: in
+    data_type: [filings]
+    source_url: https://www.sebi.gov.in/filings.html
+    api_url: null
+    access_method: descarga_documento
+    requires_api_key: false
+    free: true
+    commercial_use: no_localizado
+    storage_allowed: no_localizado
+    redistribution_allowed: no_localizado
+    attribution_required: no_localizado
+    rate_limit: no_localizado
+    update_frequency: por_evento
+    historical_depth: "variable"
+    license: no_localizada
+    terms_url: https://www.sebi.gov.in/
+    status: NEEDS_REVIEW
+    tier: 3
+    priority: 99
+    verification: PROVISIONAL
+    last_verified: null
+    adaptador: null
+    notes: >
+      Publica documentos, no datasets. No se ha localizado ningun portal de datos
+      abiertos estructurado equivalente a EDGAR o dados.cvm.gov.br. Y el dato
+      estructurado indio (PIT 2015, SAST 2011, shareholding, resultados) se
+      publica en las webs de NSE y BSE, que prohiben recolectarlo. India fuera de
+      V1 por falta de fuente, no por falta de ganas.
+
+  # --------------------------------------------------------------------------
+  # Tier C — desarrollo. Funcionan en local; en produccion, error al arrancar.
+  # --------------------------------------------------------------------------
+
+  - id: sintetico
+    name: Proveedor sintetico
+    country: global
+    data_type: [precios, fundamentales, divisas, sectores]
+    source_url: null
+    api_url: null
+    access_method: generado_en_local
+    requires_api_key: false
+    free: true
+    commercial_use: si
+    storage_allowed: si
+    redistribution_allowed: si
+    attribution_required: false
+    rate_limit: null
+    update_frequency: determinista
+    historical_depth: "la que se pida"
+    license: "datos generados por nosotros"
+    terms_url: null
+    status: APPROVED
+    tier: 1
+    priority: 0
+    verification: VERIFICADO
+    last_verified: "2026-09-15"
+    adaptador: sintetico
+    notes: >
+      Es la unica fuente VERIFICADA del registro, y por un motivo trivial: los
+      datos los inventamos nosotros, asi que no hay terminos de nadie que leer.
+      Cualquier informe generado con ella va marcado como sintetico en la
+      cabecera y en el nombre del fichero.
+
+  - id: yfinance
+    name: Yahoo Finance (via yfinance)
+    country: global
+    data_type: [precios, fundamentales, divisas, sectores]
+    source_url: https://finance.yahoo.com
+    api_url: null
+    access_method: libreria_no_oficial
+    requires_api_key: false
+    free: true
+    commercial_use: no
+    storage_allowed: no
+    redistribution_allowed: no
+    attribution_required: null
+    rate_limit: "no publicado; acceso automatizado prohibido sin permiso escrito"
+    update_frequency: diaria
+    historical_depth: "~4 ejercicios de fundamentales"
+    license: "personal, no transferible, revocable, no exclusiva"
+    terms_url: https://guce.yahoo.com/terms
+    status: DEVELOPMENT_ONLY
+    tier: 4
+    priority: 90
+    verification: PROVISIONAL
+    last_verified: null
+    adaptador: yfinance
+    notes: >
+      "You must not redistribute information displayed on or provided by Yahoo
+      Finance." La libreria yfinance es Apache-2.0, pero eso licencia el cliente
+      y no el contenido: los datos son de Yahoo y de sus proveedores de bolsa.
+      Era la fuente de precios del sistema anterior de este repositorio, asi que
+      DEVELOPMENT_ONLY aqui no es prudencia abstracta. Y ojo: sus terminos
+      tampoco amparan claramente el acceso automatizado durante el prototipado.
+
+  - id: eodhd
+    name: EOD Historical Data
+    country: global
+    data_type: [fundamentales, sectores]
+    source_url: https://eodhd.com
+    api_url: https://eodhd.com/api/
+    access_method: rest_json
+    requires_api_key: true
+    free: false
+    commercial_use: "no en capa gratuita; si con plan de pago"
+    storage_allowed: no_localizado
+    redistribution_allowed: no
+    attribution_required: no_localizado
+    rate_limit: "20 llamadas/dia en capa gratuita"
+    update_frequency: diaria
+    historical_depth: "~20 anos con plan de pago"
+    license: "segun plan contratado"
+    terms_url: https://eodhd.com/financial-apis/terms
+    status: DEVELOPMENT_ONLY
+    tier: 4
+    priority: 50
+    verification: PROVISIONAL
+    last_verified: null
+    adaptador: eodhd
+    notes: >
+      Es DEVELOPMENT_ONLY porque el codigo no puede comprobar en que plan esta
+      una clave, y la capa gratuita no permite uso comercial. Con un plan de pago
+      contratado y sus terminos leidos, pasa a APPROVED_WITH_RESTRICTIONS
+      cambiando esta linea: es la candidata natural del Tier D y el camino mas
+      corto de 0 euros al producto completo, porque el adaptador ya esta escrito
+      y probado contra respuestas grabadas, y su cobertura incluye India.
+
+  # --------------------------------------------------------------------------
+  # Tier D — rechazadas. No se instancian nunca.
+  # --------------------------------------------------------------------------
+
+  - id: b3
+    name: B3
+    country: br
+    data_type: [precios, indices, metadatos]
+    source_url: https://www.b3.com.br
+    api_url: null
+    access_method: descarga_web
+    requires_api_key: false
+    free: true
+    commercial_use: no
+    storage_allowed: no
+    redistribution_allowed: no
+    attribution_required: null
+    rate_limit: null
+    update_frequency: diaria
+    historical_depth: larga
+    license: "Politica de Consumo de Market Data"
+    terms_url: https://www.b3.com.br/pt_br/termos-de-uso-e-protecao-de-dados/termos-de-uso/
+    status: REJECTED
+    tier: 4
+    priority: 99
+    verification: PROVISIONAL
+    last_verified: null
+    adaptador: null
+    notes: >
+      El usuario final no puede distribuir, redistribuir, transferir, transmitir,
+      retransmitir, licenciar, sublicenciar, arrendar, vender, revender,
+      recircular, reformatear ni publicar market data. Esa lista es larga a
+      proposito: "reformatear" cierra el argumento de que transformar el dato lo
+      convierte en otra cosa. Politica nueva vigente desde el 01/01/2026, asi que
+      cualquier analisis anterior a esa fecha esta caducado. Y no hace falta:
+      casi todo lo que el Public Data Hub ofrece de fundamentales lo publica
+      tambien la CVM, que no lo prohibe.
+
+  - id: bme
+    name: BME — Bolsas y Mercados Espanoles
+    country: es
+    data_type: [precios, indices]
+    source_url: https://www.bolsasymercados.es/
+    api_url: null
+    access_method: descarga_web
+    requires_api_key: false
+    free: true
+    commercial_use: no
+    storage_allowed: no
+    redistribution_allowed: no
+    attribution_required: null
+    rate_limit: null
+    update_frequency: diaria
+    historical_depth: larga
+    license: "uso interno exclusivamente"
+    terms_url: https://www.bolsasymercados.es/
+    status: REJECTED
+    tier: 4
+    priority: 99
+    verification: PROVISIONAL
+    last_verified: null
+    adaptador: null
+    notes: >
+      Uso interno exclusivamente. Cualquier otro uso comercial o redistribucion a
+      terceros exige autorizacion previa y expresa de BME Market Data
+      (marketdata@grupobme.es). El IBEX 35 es producto de BME/SIX: no hay camino
+      gratuito al benchmark espanol.
+
+  - id: nse
+    name: NSE India
+    country: in
+    data_type: [precios, indices, filings, insiders]
+    source_url: https://www.nseindia.com
+    api_url: null
+    access_method: descarga_web
+    requires_api_key: false
+    free: true
+    commercial_use: no
+    storage_allowed: no
+    redistribution_allowed: no
+    attribution_required: null
+    rate_limit: "recoleccion automatizada prohibida"
+    update_frequency: diaria
+    historical_depth: larga
+    license: "NSE Terms of Use"
+    terms_url: https://www.nseindia.com/static/nse-terms-of-use
+    status: REJECTED
+    tier: 4
+    priority: 99
+    verification: PROVISIONAL
+    last_verified: null
+    adaptador: null
+    notes: >
+      Prohibida toda recoleccion sistematica o automatizada (scraping, data
+      mining, data extraction, data harvesting) sin consentimiento escrito
+      expreso. El market data comercial debe proveerlo NSE Data a precio aprobado
+      por su Consejo. Los terminos advierten de acciones legales, y la
+      jurisdiccion es india.
+
+  - id: bse
+    name: BSE India
+    country: in
+    data_type: [precios, indices, filings]
+    source_url: https://www.bseindia.com
+    api_url: null
+    access_method: descarga_web
+    requires_api_key: false
+    free: true
+    commercial_use: no
+    storage_allowed: no
+    redistribution_allowed: no
+    attribution_required: true
+    rate_limit: null
+    update_frequency: diaria
+    historical_depth: larga
+    license: "personal, non-commercial or educational"
+    terms_url: https://www.bseindia.com/static/about/website_policy.html
+    status: REJECTED
+    tier: 4
+    priority: 99
+    verification: PROVISIONAL
+    last_verified: null
+    adaptador: null
+    notes: >
+      Uso personal, no comercial o educativo, con atribucion completa. Los
+      productos comerciales de market data son de pago; la distribucion
+      internacional va via Deutsche Borse desde 2013. Jurisdiccion: leyes de
+      India, tribunales de Bombay.
+
+  - id: sp_dj_indices
+    name: S&P Dow Jones Indices
+    country: us
+    data_type: [indices]
+    source_url: https://www.spglobal.com/spdji/
+    api_url: null
+    access_method: licencia_comercial
+    requires_api_key: false
+    free: false
+    commercial_use: no
+    storage_allowed: no
+    redistribution_allowed: no
+    attribution_required: null
+    rate_limit: null
+    update_frequency: diaria
+    historical_depth: larga
+    license: "acuerdo de licencia con tarifas"
+    terms_url: https://www.spglobal.com/spdji/en/disclaimers/
+    status: REJECTED
+    tier: 4
+    priority: 99
+    verification: PROVISIONAL
+    last_verified: null
+    adaptador: null
+    notes: >
+      "Redistribution or reproduction in whole or in part are prohibited without
+      written permission." Niveles, constituyentes y ponderaciones van por
+      acuerdo aparte con tarifas. Por la misma logica: IBEX 35 (BME/SIX),
+      Ibovespa (B3), NIFTY 50 (NSE Indices) y SENSEX (Asia Index/BSE). Sin
+      licencia de precios ni de indices no hay rendimiento relativo ni alfa, y
+      usar un ETF que replique el indice sustituye un dato licenciado por otro.
+
+  - id: alpha_vantage
+    name: Alpha Vantage
+    country: global
+    data_type: [precios, fundamentales]
+    source_url: https://www.alphavantage.co
+    api_url: https://www.alphavantage.co/query
+    access_method: rest_json
+    requires_api_key: true
+    free: true
+    commercial_use: no
+    storage_allowed: no_localizado
+    redistribution_allowed: no
+    attribution_required: true
+    rate_limit: "capa gratuita limitada"
+    update_frequency: diaria
+    historical_depth: larga
+    license: "capa gratuita: sin reventa"
+    terms_url: https://www.alphavantage.co/terms_of_service/
+    status: REJECTED
+    tier: 4
+    priority: 99
+    verification: PROVISIONAL
+    last_verified: null
+    adaptador: null
+    notes: >
+      Redistribucion comercial y datos licenciados de bolsa exigen licencia
+      aparte. La capa gratuita pide atribucion y prohibe la reventa.
+
+  - id: tiingo
+    name: Tiingo
+    country: global
+    data_type: [precios, fundamentales]
+    source_url: https://www.tiingo.com
+    api_url: https://api.tiingo.com
+    access_method: rest_json
+    requires_api_key: true
+    free: true
+    commercial_use: no
+    storage_allowed: no_localizado
+    redistribution_allowed: no
+    attribution_required: no_localizado
+    rate_limit: "capa gratuita limitada"
+    update_frequency: diaria
+    historical_depth: larga
+    license: "capa gratuita: sin reventa ni redistribucion"
+    terms_url: https://www.tiingo.com/about/pricing
+    status: REJECTED
+    tier: 4
+    priority: 99
+    verification: PROVISIONAL
+    last_verified: null
+    adaptador: null
+    notes: "La capa gratuita prohibe expresamente reventa y redistribucion."
+
+  - id: finnhub
+    name: Finnhub
+    country: global
+    data_type: [precios, fundamentales, noticias]
+    source_url: https://finnhub.io
+    api_url: https://finnhub.io/api/v1/
+    access_method: rest_json
+    requires_api_key: true
+    free: true
+    commercial_use: no
+    storage_allowed: no_localizado
+    redistribution_allowed: no
+    attribution_required: no_localizado
+    rate_limit: "capa gratuita limitada"
+    update_frequency: diaria
+    historical_depth: variable
+    license: "capa gratuita: licencia no comercial"
+    terms_url: https://finnhub.io/terms-of-service
+    status: REJECTED
+    tier: 4
+    priority: 99
+    verification: PROVISIONAL
+    last_verified: null
+    adaptador: null
+    notes: >
+      En cuanto la aplicacion se monetiza o redistribuye datos, hace falta plan
+      de pago.
+
+  - id: marketstack
+    name: Marketstack
+    country: global
+    data_type: [precios]
+    source_url: https://marketstack.com
+    api_url: https://api.marketstack.com/v1/
+    access_method: rest_json
+    requires_api_key: true
+    free: true
+    commercial_use: no
+    storage_allowed: no_localizado
+    redistribution_allowed: no
+    attribution_required: no_localizado
+    rate_limit: "100 peticiones al mes en capa gratuita"
+    update_frequency: diaria
+    historical_depth: "1 ano en capa gratuita"
+    license: "capa gratuita: no comercial"
+    terms_url: https://marketstack.com/terms
+    status: REJECTED
+    tier: 4
+    priority: 99
+    verification: PROVISIONAL
+    last_verified: null
+    adaptador: null
+    notes: "100 peticiones al MES. Ni siquiera daria para el MVP si se pudiera."
+
+  - id: stooq
+    name: Stooq
+    country: global
+    data_type: [precios]
+    source_url: https://stooq.com
+    api_url: https://stooq.com/q/d/l/
+    access_method: descarga_csv
+    requires_api_key: false
+    free: true
+    commercial_use: no_localizado
+    storage_allowed: no_localizado
+    redistribution_allowed: no_localizado
+    attribution_required: no_localizado
+    rate_limit: "cuota diaria baja, no publicada"
+    update_frequency: diaria
+    historical_depth: larga
+    license: no_localizada
+    terms_url: null
+    status: REJECTED
+    tier: 4
+    priority: 99
+    verification: NO_LOCALIZADO
+    last_verified: null
+    adaptador: null
+    notes: >
+      La trampa mas facil de todo el research: gratis, sin clave, con historico
+      de varios mercados y sin nadie que te diga que no. Pero no tener terminos
+      localizables no es lo mismo que no tener restricciones: es no saber.
+      REJECTED por ausencia de informacion, no por prohibicion. Si aparecen unos
+      terminos y son buenos, se reabre.

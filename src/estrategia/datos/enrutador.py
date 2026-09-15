@@ -35,7 +35,7 @@ import pandas as pd
 
 from ..config import Config
 from ..errores import ErrorConfiguracion
-from . import contrato, registro
+from . import contrato, licencias, registro
 from .proveedor import TIPOS_DE_DATO, Capacidades, Fuente
 
 
@@ -87,6 +87,19 @@ class Enrutador:
             if nombre not in salida:
                 salida[nombre] = self.fuente(tipo).capacidades
         return salida
+
+    def restricciones(self) -> list[str]:
+        """Condiciones de licencia que arrastran las fuentes en uso.
+
+        El informe las publica. Una obligacion de atribucion que vive en un
+        comentario del YAML no se cumple sola; una que sale impresa en cada
+        informe, si.
+        """
+        reg = licencias.cargar()
+        avisos: list[str] = []
+        for nombre in self.fuentes_usadas:
+            avisos.extend(reg.ficha_de(nombre).restricciones())
+        return avisos
 
     def comprobar_disponibilidad(self) -> list[str]:
         """Problemas que impedirian usar alguna fuente, antes de empezar.
