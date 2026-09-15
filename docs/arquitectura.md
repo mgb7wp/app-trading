@@ -5,8 +5,10 @@ Los diseños que el research no necesitaba red para producir: modelo canónico
 analista IA (§27), requisitos del screener (§26) y la arquitectura de conectores
 (§23).
 
-Nada de esto está implementado todavía. El §29 pedía no empezar por los
-conectores, y este documento es lo que hay que tener escrito antes de escribirlos.
+El §29 pedía no empezar por los conectores, y este documento es lo que hay que
+tener escrito antes de escribirlos. De lo que describe, lo único implementado hoy
+es lo que no necesita fuentes: la capa de datos (interfaz, enrutador, contrato,
+almacén con vista a fecha), el registro de licencias y los indicadores del §16.
 
 ---
 
@@ -698,13 +700,21 @@ ya existe, probada, y encaja sin cambios:
 | `datos/contrato.py` | Base del motor de calidad, con la regla de la columna entera a nulo |
 | `datos/almacen.py` | Vista a fecha de corte y anotación de la fecha máxima leída |
 | `calendario.py` | Sesiones por mercado, vectorizado. Ya cubre los cuatro |
-| `indicadores.py` | Medias, ATR de Wilder, momentum. A ampliar con RSI, MACD, estocástico, Bollinger, OBV, beta y volatilidad histórica |
+| `indicadores.py` | Todo el §16: medias simple y exponencial, ATR de Wilder, momentum, RSI, MACD, ROC, estocástico, Bollinger, volatilidad histórica, OBV, volumen relativo, beta, rendimiento relativo y drawdown. Funciones puras y causales, con un test que lo comprueba recortando la serie |
 | `fundamental.py` | Percentiles de Hazen, trampas de signo, puntuación 0-100 |
 | `metricas.py` | CAGR, drawdown, Sharpe |
 | `informe_html.py` | Página autocontenida, sin JS ni CDN, paleta validada |
 | `diagnostico.py` | Qué resuelve cada fuente y qué no, ticker a ticker |
 
-Y lo que se retira a una etiqueta de git, porque ya no es el producto:
-`backtest.py`, `ordenes.py`, `cartera.py`, `riesgo.py`, `salidas.py`,
-`seleccion.py` y `validacion.py`. Están escritos y probados; el día que haya un
-producto de carteras, ese motor existe.
+Y el motor de la estrategia de trading —`backtest.py`, `ordenes.py`,
+`cartera.py`, `riesgo.py`, `salidas.py`, `seleccion.py`, `validacion.py`— queda
+donde está, marcado con la etiqueta `motor-trading-v1`. Está escrito y probado, y
+el día que haya un producto de carteras existe.
+
+No se ha borrado, y conviene decir por qué en vez de dejarlo parecer descuido.
+Borrarlo arrastra consigo `informe.py` y `informe_html.py` —que renderizan
+resultados de backtest—, `metricas.py`, el panel, y buena parte de
+`test_anti_sesgo.py`, que es la batería que demuestra que el almacén con fecha de
+corte funciona. Cambiar esa garantía por un repositorio más ordenado es un mal
+negocio. Lo que sí está cerrado es la puerta que importaba: su fuente de precios
+no arranca en producción.

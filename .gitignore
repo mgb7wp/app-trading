@@ -12,11 +12,14 @@ datos/cache/
 datos/resultados/
 salida/
 
-# El sitio SI se versiona —asi el archivo semanal de informes queda en el
-# historial—, pero nunca las paginas generadas con datos sinteticos: el sitio es
+# El sitio se genera, asi que no se versiona: `estrategia sitio` lo reconstruye
+# desde config/fuentes.yaml en un segundo, y el workflow lo hace en cada push.
+# Versionarlo solo produciria diffs de 60 KB cada vez que cambia un estado.
+#
+# Los informes con datos sinteticos ademas NO deben publicarse nunca: el sitio es
 # publico, y publicar una curva de capital inventada como si fuera el estado real
 # de una cartera es exactamente el error que el resto del proyecto se esfuerza en
-# evitar. Las genera el ciclo semanal a partir de datos de verdad.
+# evitar.
 sitio/index.html
 sitio/informes/sintetico_*.html
 

@@ -72,12 +72,12 @@ fuentes:
     last_verified: null
     adaptador: null
     notes: >
-      No se ha localizado ninguna restriccion, que no es lo mismo que haber leido
-      una autorizacion. Es el punto 1 de la verificacion obligatoria y el mayor
-      riesgo del proyecto por concentracion. Postura conservadora que ademas es
-      buena ingenieria: no redistribuimos filings, extraemos cifras y enlazamos
-      al original. Los limites tecnicos (10 req/s, user-agent) van en el
-      conector, no en la configuracion.
+      No se ha localizado ninguna restricción, que no es lo mismo que haber leído
+      una autorización. Es el punto 1 de la verificación obligatoria y el mayor
+      riesgo del proyecto por concentración. Postura conservadora que además es
+      buena ingeniería: no redistribuimos filings, extraemos cifras y enlazamos
+      al original. Los límites técnicos (10 req/s, user-agent) van en el
+      conector, no en la configuración.
 
   - id: cvm_dados_abertos
     name: CVM — Portal de Dados Abertos
@@ -105,9 +105,9 @@ fuentes:
     adaptador: null
     notes: >
       La licencia va en el metadato de CADA dataset y puede cambiar en cualquier
-      momento, asi que el conector debe releer los metadatos en cada ingesta y
+      momento, así que el conector debe releer los metadatos en cada ingesta y
       parar si cambian. Datasets: cia_aberta-doc-dfp, -itr, -fre, -vlmo, -fca.
-      `vlmo` es el equivalente brasileno del Form 4 y es lo que salva a Brasil.
+      `vlmo` es el equivalente brasileño del Form 4 y es lo que salva a Brasil.
 
   - id: ecb_fx
     name: Banco Central Europeo — tipos de referencia
@@ -134,11 +134,11 @@ fuentes:
     last_verified: null
     adaptador: null
     notes: >
-      BRL e INR estan entre las 29 divisas, asi que cubre el §8 entero. Dos
-      cautelas que van al codigo: es un tipo de referencia de las 16:00 CET, no
-      de mercado; y el calendario es TARGET, no el de cada bolsa (regla: ultimo
+      BRL e INR están entre las 29 divisas, así que cubre el §8 entero. Dos
+      cautelas que van al código: es un tipo de referencia de las 16:00 CET, no
+      de mercado; y el calendario es TARGET, no el de cada bolsa (regla: último
       disponible, nunca interpolar hacia adelante). Un cruce calculado por
-      nosotros se marca `is_derived`, porque los terminos piden no modificar el
+      nosotros se marca `is_derived`, porque los términos piden no modificar el
       dato y un cruce derivado es un dato nuestro, no del BCE.
 
   - id: world_bank
@@ -166,10 +166,10 @@ fuentes:
     last_verified: null
     adaptador: null
     notes: >
-      Atribucion con formato exigido —`The World Bank: Dataset name: Data
-      source`— y con obligacion de propagarla a sublicenciatarios, lo que
-      condiciona el frontal y la API, no solo un pie de pagina. Trampa: hay
-      datasets de terceros dentro del catalogo que pueden no ser
+      Atribución con formato exigido —`The World Bank: Dataset name: Data
+      source`— y con obligación de propagarla a sublicenciatarios, lo que
+      condiciona el frontal y la API, no solo un pie de página. Trampa: hay
+      datasets de terceros dentro del catálogo que pueden no ser
       redistribuibles. El Pink Sheet da Brent, cobre LME y oro, pero MENSUAL.
 
   - id: gdelt
@@ -197,11 +197,11 @@ fuentes:
     last_verified: null
     adaptador: null
     notes: >
-      La licencia mas permisiva de todo el research, sin competencia cercana. El
+      La licencia más permisiva de todo el research, sin competencia cercana. El
       riesgo no es legal, es de calidad: GDELT indexa entidades por nombre y no
-      por ticker, asi que la asociacion empresa-articulo es aproximada y hay que
-      medir su precision antes de publicar el numero; y el tono es un promedio
-      lexico, no sentimiento financiero, asi que solo se publica relativo a la
+      por ticker, así que la asociación empresa-artículo es aproximada y hay que
+      medir su precisión antes de publicar el número; y el tono es un promedio
+      léxico, no sentimiento financiero, así que solo se publica relativo a la
       propia historia de la empresa.
 
   # --------------------------------------------------------------------------
@@ -234,10 +234,10 @@ fuentes:
     adaptador: null
     notes: >
       El `commercial_use: probable` sale de la Ley 37/2007 y de la Directiva (UE)
-      2019/1024, que contemplan expresamente la reutilizacion comercial. Pero la
-      ley marco no sustituye a la condicion concreta del organismo: falta la nota
-      legal de la CNMV, que es el punto 2 de la verificacion obligatoria. Se pone
-      atribucion desde el principio porque cuesta cero y evita rehacer el frontal.
+      2019/1024, que contemplan expresamente la reutilización comercial. Pero la
+      ley marco no sustituye a la condición concreta del organismo: falta la nota
+      legal de la CNMV, que es el punto 2 de la verificación obligatoria. Se pone
+      atribución desde el principio porque cuesta cero y evita rehacer el frontal.
       En V1 solo se toma lo estructurado (comunicaciones, cortos, directivos,
       participaciones); los estados financieros son V1.1 porque llegan como
       documento y no como campos.
@@ -268,11 +268,11 @@ fuentes:
     adaptador: null
     notes: >
       FRED no es una fuente, es un agregador. Las series propias de la Fed y de
-      las agencias federales no estan en el mismo regimen que las licenciadas de
+      las agencias federales no están en el mismo régimen que las licenciadas de
       terceros (S&P/Case-Shiller, NAHB, ICE, Haver). El conector NO debe aceptar
       un series_id arbitrario: lista blanca, con el titular de cada serie
-      anotado. Cualquier otro diseno convierte "hay que comprobar la serie" en
-      "alguien se acordara".
+      anotado. Cualquier otro diseño convierte "hay que comprobar la serie" en
+      "alguien se acordará".
 
   - id: investor_relations
     name: Investor Relations de emisores
@@ -299,10 +299,10 @@ fuentes:
     last_verified: null
     adaptador: null
     notes: >
-      Los documentos son publicos pero tienen copyright del emisor: se pueden
+      Los documentos son públicos pero tienen copyright del emisor: se pueden
       descargar, procesar, extraer cifras y citar con enlace al original; no se
-      pueden republicar enteros ni alojar copias publicas. Por eso la copia local
-      es privada por diseno y lo que se publica es la URL de origen.
+      pueden republicar enteros ni alojar copias públicas. Por eso la copia local
+      es privada por diseño y lo que se publica es la URL de origen.
       `scrape_allowed` se lee de robots.txt en cada pasada y se guarda; no se
       supone y no se decide una vez.
 
@@ -335,10 +335,10 @@ fuentes:
     last_verified: null
     adaptador: null
     notes: >
-      El dato es excelente —es regulatorio, no una estimacion— y tapa un hueco
-      que no tapa nadie mas. Pero es la unica fuente de la lista corta donde no
-      se ha localizado NINGUNA condicion de uso, y eso no se puede confundir con
-      que no las haya. Punto 7 de la verificacion obligatoria.
+      El dato es excelente —es regulatorio, no una estimación— y tapa un hueco
+      que no tapa nadie más. Pero es la única fuente de la lista corta donde no
+      se ha localizado NINGUNA condición de uso, y eso no se puede confundir con
+      que no las haya. Punto 7 de la verificación obligatoria.
 
   - id: imf
     name: Fondo Monetario Internacional
@@ -365,11 +365,11 @@ fuentes:
     last_verified: null
     adaptador: null
     notes: >
-      Tres clausulas que se contradicen: regla general de uso personal no
-      comercial; terminos especiales para datos estadisticos que permiten crear
+      Tres cláusulas que se contradicen: regla general de uso personal no
+      comercial; términos especiales para datos estadísticos que permiten crear
       obras derivadas y distribuir; y un "para uso comercial, escribanos a pedir
       permiso". No se resuelve sin leer el texto completo, y es exactamente el
-      caso que el encargo pedia no dar por bueno. No hace falta para el MVP: el
+      caso que el encargo pedía no dar por bueno. No hace falta para el MVP: el
       Banco Mundial da lo mismo bajo CC BY 4.0. Se manda el correo en paralelo.
 
   - id: sebi
@@ -397,10 +397,10 @@ fuentes:
     last_verified: null
     adaptador: null
     notes: >
-      Publica documentos, no datasets. No se ha localizado ningun portal de datos
+      Publica documentos, no datasets. No se ha localizado ningún portal de datos
       abiertos estructurado equivalente a EDGAR o dados.cvm.gov.br. Y el dato
       estructurado indio (PIT 2015, SAST 2011, shareholding, resultados) se
-      publica en las webs de NSE y BSE, que prohiben recolectarlo. India fuera de
+      publica en las webs de NSE y BSE, que prohíben recolectarlo. India fuera de
       V1 por falta de fuente, no por falta de ganas.
 
   # --------------------------------------------------------------------------
@@ -408,7 +408,7 @@ fuentes:
   # --------------------------------------------------------------------------
 
   - id: sintetico
-    name: Proveedor sintetico
+    name: Proveedor sintético
     country: global
     data_type: [precios, fundamentales, divisas, sectores]
     source_url: null
@@ -432,13 +432,13 @@ fuentes:
     last_verified: "2026-09-15"
     adaptador: sintetico
     notes: >
-      Es la unica fuente VERIFICADA del registro, y por un motivo trivial: los
-      datos los inventamos nosotros, asi que no hay terminos de nadie que leer.
-      Cualquier informe generado con ella va marcado como sintetico en la
+      Es la única fuente VERIFICADA del registro, y por un motivo trivial: los
+      datos los inventamos nosotros, así que no hay términos de nadie que leer.
+      Cualquier informe generado con ella va marcado como sintético en la
       cabecera y en el nombre del fichero.
 
   - id: yfinance
-    name: Yahoo Finance (via yfinance)
+    name: Yahoo Finance (vía yfinance)
     country: global
     data_type: [precios, fundamentales, divisas, sectores]
     source_url: https://finance.yahoo.com
@@ -463,10 +463,10 @@ fuentes:
     adaptador: yfinance
     notes: >
       "You must not redistribute information displayed on or provided by Yahoo
-      Finance." La libreria yfinance es Apache-2.0, pero eso licencia el cliente
+      Finance." La librería yfinance es Apache-2.0, pero eso licencia el cliente
       y no el contenido: los datos son de Yahoo y de sus proveedores de bolsa.
-      Era la fuente de precios del sistema anterior de este repositorio, asi que
-      DEVELOPMENT_ONLY aqui no es prudencia abstracta. Y ojo: sus terminos
+      Era la fuente de precios del sistema anterior de este repositorio, así que
+      DEVELOPMENT_ONLY aquí no es prudencia abstracta. Y ojo: sus términos
       tampoco amparan claramente el acceso automatizado durante el prototipado.
 
   - id: eodhd
@@ -478,7 +478,7 @@ fuentes:
     access_method: rest_json
     requires_api_key: true
     free: false
-    commercial_use: "no en capa gratuita; si con plan de pago"
+    commercial_use: "no en capa gratuita; sí con plan de pago"
     storage_allowed: no_localizado
     redistribution_allowed: no
     attribution_required: no_localizado
@@ -494,11 +494,11 @@ fuentes:
     last_verified: null
     adaptador: eodhd
     notes: >
-      Es DEVELOPMENT_ONLY porque el codigo no puede comprobar en que plan esta
+      Es DEVELOPMENT_ONLY porque el código no puede comprobar en qué plan está
       una clave, y la capa gratuita no permite uso comercial. Con un plan de pago
-      contratado y sus terminos leidos, pasa a APPROVED_WITH_RESTRICTIONS
-      cambiando esta linea: es la candidata natural del Tier D y el camino mas
-      corto de 0 euros al producto completo, porque el adaptador ya esta escrito
+      contratado y sus términos leídos, pasa a APPROVED_WITH_RESTRICTIONS
+      cambiando esta línea: es la candidata natural del Tier D y el camino más
+      corto de 0 euros al producto completo, porque el adaptador ya está escrito
       y probado contra respuestas grabadas, y su cobertura incluye India.
 
   # --------------------------------------------------------------------------
@@ -533,14 +533,14 @@ fuentes:
       El usuario final no puede distribuir, redistribuir, transferir, transmitir,
       retransmitir, licenciar, sublicenciar, arrendar, vender, revender,
       recircular, reformatear ni publicar market data. Esa lista es larga a
-      proposito: "reformatear" cierra el argumento de que transformar el dato lo
-      convierte en otra cosa. Politica nueva vigente desde el 01/01/2026, asi que
-      cualquier analisis anterior a esa fecha esta caducado. Y no hace falta:
+      propósito: "reformatear" cierra el argumento de que transformar el dato lo
+      convierte en otra cosa. Política nueva vigente desde el 01/01/2026, así que
+      cualquier análisis anterior a esa fecha está caducado. Y no hace falta:
       casi todo lo que el Public Data Hub ofrece de fundamentales lo publica
-      tambien la CVM, que no lo prohibe.
+      también la CVM, que no lo prohíbe.
 
   - id: bme
-    name: BME — Bolsas y Mercados Espanoles
+    name: BME — Bolsas y Mercados Españoles
     country: es
     data_type: [precios, indices]
     source_url: https://www.bolsasymercados.es/
@@ -564,10 +564,10 @@ fuentes:
     last_verified: null
     adaptador: null
     notes: >
-      Uso interno exclusivamente. Cualquier otro uso comercial o redistribucion a
-      terceros exige autorizacion previa y expresa de BME Market Data
+      Uso interno exclusivamente. Cualquier otro uso comercial o redistribución a
+      terceros exige autorización previa y expresa de BME Market Data
       (marketdata@grupobme.es). El IBEX 35 es producto de BME/SIX: no hay camino
-      gratuito al benchmark espanol.
+      gratuito al benchmark español.
 
   - id: nse
     name: NSE India
@@ -594,11 +594,11 @@ fuentes:
     last_verified: null
     adaptador: null
     notes: >
-      Prohibida toda recoleccion sistematica o automatizada (scraping, data
+      Prohibida toda recolección sistemática o automatizada (scraping, data
       mining, data extraction, data harvesting) sin consentimiento escrito
       expreso. El market data comercial debe proveerlo NSE Data a precio aprobado
-      por su Consejo. Los terminos advierten de acciones legales, y la
-      jurisdiccion es india.
+      por su Consejo. Los términos advierten de acciones legales, y la
+      jurisdicción es india.
 
   - id: bse
     name: BSE India
@@ -625,9 +625,9 @@ fuentes:
     last_verified: null
     adaptador: null
     notes: >
-      Uso personal, no comercial o educativo, con atribucion completa. Los
-      productos comerciales de market data son de pago; la distribucion
-      internacional va via Deutsche Borse desde 2013. Jurisdiccion: leyes de
+      Uso personal, no comercial o educativo, con atribución completa. Los
+      productos comerciales de market data son de pago; la distribución
+      internacional va vía Deutsche Börse desde 2013. Jurisdicción: leyes de
       India, tribunales de Bombay.
 
   - id: sp_dj_indices
@@ -657,9 +657,9 @@ fuentes:
     notes: >
       "Redistribution or reproduction in whole or in part are prohibited without
       written permission." Niveles, constituyentes y ponderaciones van por
-      acuerdo aparte con tarifas. Por la misma logica: IBEX 35 (BME/SIX),
+      acuerdo aparte con tarifas. Por la misma lógica: IBEX 35 (BME/SIX),
       Ibovespa (B3), NIFTY 50 (NSE Indices) y SENSEX (Asia Index/BSE). Sin
-      licencia de precios ni de indices no hay rendimiento relativo ni alfa, y
+      licencia de precios ni de índices no hay rendimiento relativo ni alfa, y
       usar un ETF que replique el indice sustituye un dato licenciado por otro.
 
   - id: alpha_vantage
@@ -687,8 +687,8 @@ fuentes:
     last_verified: null
     adaptador: null
     notes: >
-      Redistribucion comercial y datos licenciados de bolsa exigen licencia
-      aparte. La capa gratuita pide atribucion y prohibe la reventa.
+      Redistribución comercial y datos licenciados de bolsa exigen licencia
+      aparte. La capa gratuita pide atribución y prohíbe la reventa.
 
   - id: tiingo
     name: Tiingo
@@ -714,7 +714,7 @@ fuentes:
     verification: PROVISIONAL
     last_verified: null
     adaptador: null
-    notes: "La capa gratuita prohibe expresamente reventa y redistribucion."
+    notes: "La capa gratuita prohíbe expresamente reventa y redistribución."
 
   - id: finnhub
     name: Finnhub
@@ -741,7 +741,7 @@ fuentes:
     last_verified: null
     adaptador: null
     notes: >
-      En cuanto la aplicacion se monetiza o redistribuye datos, hace falta plan
+      En cuanto la aplicación se monetiza o redistribuye datos, hace falta plan
       de pago.
 
   - id: marketstack
@@ -768,7 +768,7 @@ fuentes:
     verification: PROVISIONAL
     last_verified: null
     adaptador: null
-    notes: "100 peticiones al MES. Ni siquiera daria para el MVP si se pudiera."
+    notes: "100 peticiones al MES. Ni siquiera daría para el MVP si se pudiera."
 
   - id: stooq
     name: Stooq
@@ -795,8 +795,8 @@ fuentes:
     last_verified: null
     adaptador: null
     notes: >
-      La trampa mas facil de todo el research: gratis, sin clave, con historico
-      de varios mercados y sin nadie que te diga que no. Pero no tener terminos
+      La trampa más fácil de todo el research: gratis, sin clave, con histórico
+      de varios mercados y sin nadie que te diga que no. Pero no tener términos
       localizables no es lo mismo que no tener restricciones: es no saber.
-      REJECTED por ausencia de informacion, no por prohibicion. Si aparecen unos
-      terminos y son buenos, se reabre.
+      REJECTED por ausencia de información, no por prohibición. Si aparecen unos
+      términos y son buenos, se reabre.

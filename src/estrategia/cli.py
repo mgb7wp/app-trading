@@ -281,6 +281,27 @@ def cmd_validar(args, cfg) -> None:
     _guardar_informe(inf, texto, args)
 
 
+def cmd_sitio(args, cfg) -> None:
+    """Genera el sitio del research, que es lo que se publica en el dominio."""
+    from . import sitio_research
+    from .datos import licencias
+
+    ruta = sitio_research.escribir(args.destino)
+    reg = licencias.cargar()
+    pendientes = reg.pendientes_de_verificar()
+
+    print(f"Sitio generado en {ruta} ({ruta.stat().st_size // 1024} KB)")
+    print(f"{len(reg.fuentes)} fuentes en el registro.")
+    if pendientes:
+        # No es un aviso decorativo: mientras esta lista no este vacia, el
+        # proyecto no puede cobrarle a nadie. Ver docs/data-licensing.md.
+        print(
+            f"\n{len(pendientes)} fuentes aptas SIN VERIFICAR contra su fuente primaria:"
+        )
+        for f in pendientes:
+            print(f"  - {f.name}: {f.terms_url or 'sin terminos localizables'}")
+
+
 def cmd_informe(args, cfg) -> None:
     cmd_backtest(args, cfg)
 
@@ -392,6 +413,15 @@ def construir_parser() -> argparse.ArgumentParser:
     i.add_argument("--periodo", choices=["diseno", "validacion", "todo"], default="todo")
     i.add_argument("--formato", choices=["md", "html", "ambos"], default="ambos")
     i.set_defaults(func=cmd_informe)
+
+    w = sub.add_parser(
+        "sitio", help="genera el sitio del research que se publica en el dominio"
+    )
+    w.add_argument(
+        "--destino", type=Path, default=Path("sitio/index.html"),
+        help="fichero de salida (por defecto sitio/index.html)",
+    )
+    w.set_defaults(func=cmd_sitio)
 
     return p
 

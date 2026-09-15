@@ -1,0 +1,89 @@
+# Publica el sitio del research en lalonja-trading.com.
+#
+# Lo que se despliega es contenido propio —el research de fuentes, la matriz y
+# el semaforo de licencias—, no datos de terceros. Por eso este workflow puede
+# correr sin ninguna clave de proveedor y sin ningun riesgo de licencia.
+#
+# Sustituye al antiguo "Ciclo semanal", que descargaba precios de Yahoo. Ese
+# ciclo ya no puede ejecutarse, y no por un fallo: yfinance esta marcada
+# DEVELOPMENT_ONLY en config/fuentes.yaml, asi que el arranque en produccion
+# falla a proposito. Un workflow programado que se sabe que va a fallar todos
+# los lunes es peor que no tenerlo.
+
+name: Publicar el sitio
+
+on:
+  push:
+    branches: [claude/modest-wozniak-6uzjeq]
+    paths:
+      - "config/fuentes.yaml"
+      - "src/estrategia/sitio_research.py"
+      - "src/estrategia/datos/licencias.py"
+      - ".github/workflows/publicar.yml"
+  workflow_dispatch:
+    inputs:
+      publicar:
+        description: "Desplegar a Cloudflare Pages"
+        type: boolean
+        required: false
+        default: true
+
+concurrency:
+  group: publicar-sitio
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Instalar
+        run: pip install -e ".[dev]"
+
+      # Primero los tests. Entre ellos esta el que comprueba que una fuente
+      # DEVELOPMENT_ONLY no arranca en produccion: si ese se rompe, el registro
+      # de licencias ha dejado de mandar y no se publica nada.
+      - name: Tests
+        run: pytest -q
+
+      - name: Generar el sitio
+        run: estrategia sitio
+
+      # Sin JavaScript y sin CDN, asi que la comprobacion que importa es que la
+      # pagina no pida nada a nadie. Si alguna vez se cuela una fuente externa,
+      # esto lo caza antes de que llegue al dominio.
+      - name: Comprobar que no hay peticiones externas
+        run: |
+          if grep -qE '<script[^>]+src=|<link[^>]+href="https?://|@import' sitio/index.html; then
+            echo "La pagina referencia recursos externos. No se publica."
+            grep -nE '<script[^>]+src=|<link[^>]+href="https?://|@import' sitio/index.html
+            exit 1
+          fi
+          echo "Autocontenida."
+
+      - name: Publicar en Cloudflare Pages
+        if: ${{ github.event.inputs.publicar != 'false' }}
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy sitio --project-name=lalonja
+
+      - name: Guardar el sitio como artefacto
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sitio
+          path: sitio/
+          retention-days: 30

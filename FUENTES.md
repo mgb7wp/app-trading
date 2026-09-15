@@ -2,6 +2,20 @@
 
 De dónde sale cada dato, cómo se añade una fuente nueva y qué tiene que cumplir.
 
+> **Antes de nada: técnicamente accesible no es lo mismo que utilizable.**
+>
+> Este documento describe la *arquitectura* de fuentes: interfaz, enrutador,
+> contrato y procedencia. Qué fuente se puede usar de verdad en un producto
+> comercial —y cuál no, y por qué— está en
+> [`docs/data-licensing.md`](docs/data-licensing.md), y lo decide
+> `config/fuentes.yaml`, que **se aplica al arrancar**: una fuente que no esté
+> aprobada no se instancia, y en producción el arranque falla.
+>
+> Las dos fuentes que este documento describía como el camino a seguir —yfinance
+> para precios, EODHD para fundamentales— están hoy en `DEVELOPMENT_ONLY`. No por
+> un fallo técnico: por sus términos de uso. Ver
+> [el registro](#el-registro-manda-al-arrancar) más abajo.
+
 ## Cómo se reparte el trabajo
 
 Cada tipo de dato tiene una fuente dueña, declarada en `config/reglas.yaml`:
@@ -72,9 +86,54 @@ La clave va en `EODHD_API_KEY`, nunca en el repositorio. **No se ha podido
 ejecutar**: se escribió contra la documentación de la API y se probó con
 respuestas grabadas.
 
+## El registro manda al arrancar
+
+`config/fuentes.yaml` lleva la ficha de cada fuente —licencia, uso comercial,
+almacenamiento, redistribución, atribución y enlace a los términos oficiales— y
+un estado. `registro.crear()`, por donde pasa toda construcción de una fuente, lo
+comprueba antes de construir nada:
+
+| Estado | Efecto en ejecución |
+|---|---|
+| `APPROVED` | Se usa en producción |
+| `APPROVED_WITH_RESTRICTIONS` | Se usa, y sus condiciones se anotan en cada fila |
+| `DEVELOPMENT_ONLY` | Funciona en local. **En producción, el arranque falla** |
+| `REJECTED` / `NEEDS_REVIEW` | No se instancia nunca |
+
+```
+$ estrategia --proveedor yfinance datos
+Error: la fuente 'yfinance' esta en estado DEVELOPMENT_ONLY y no se puede usar
+en entorno 'produccion'.
+Sus terminos no permiten usarla en un producto comercial. Sirve para desarrollo
+y para los tests, y por eso no se ha borrado.
+Para trabajar en local: LALONJA_ENTORNO=desarrollo
+```
+
+Dos decisiones que van en contra de lo cómodo, las dos a propósito.
+
+**El entorno por defecto es producción.** Si el defecto fuera `desarrollo`,
+olvidarse de poner la variable en el despliegue dejaría correr una fuente con
+problemas de licencia en silencio. Con este defecto, olvidarse de ponerla en
+local da un error ruidoso que se arregla en diez segundos. Se elige el error
+barato.
+
+**Una fuente sin ficha no se instancia.** No hay estado por defecto ni lista de
+excepciones: dar de alta un adaptador obliga a escribir su licencia y su enlace.
+Es la única forma de que el documento y el código no se separen con el tiempo, y
+hay un test que lo comprueba recorriendo el registro de adaptadores.
+
+Cada ficha lleva además `last_verified`. Hoy **todas están vacías salvo la del
+proveedor sintético**, cuyos datos inventamos nosotros y por tanto no tienen
+términos de nadie que leer.
+
 ## Cómo se añade una fuente
 
-Cinco pasos, y ninguno toca el motor.
+Seis pasos, y ninguno toca el motor.
+
+**0. Escribe su ficha de licencia** en `config/fuentes.yaml`, con su enlace a los
+términos oficiales y su estado. Va primero, no último: si la fuente no se puede
+usar, el adaptador es trabajo tirado. Y sin ficha, `registro.crear()` se niega a
+instanciarla.
 
 **1. Escribe el adaptador** en `src/estrategia/datos/`, heredando de
 `ProveedorPrecios`, `ProveedorFundamentales` o `Proveedor` según lo que sirva.

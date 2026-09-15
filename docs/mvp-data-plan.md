@@ -274,8 +274,8 @@ India. Y el FMI hasta que se aclaren sus términos.
   Brasil). Es un proyecto propio.
 - Alertas y notificaciones.
 - Carteras y seguimiento de posiciones. **El motor existe** —backtest, riesgo,
-  órdenes, salidas, ya escrito y probado— y se retira a una etiqueta de git
-  porque hoy no es el producto.
+  órdenes, salidas, ya escrito y probado, bajo la etiqueta `motor-trading-v1`—
+  pero hoy no es el producto, y su fuente de precios no puede usarse.
 - API pública. V1 es interfaz web.
 - Tiempo real. El §24 ya lo decía: no hace falta.
 
