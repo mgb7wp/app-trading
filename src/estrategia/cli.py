@@ -20,11 +20,14 @@ from pathlib import Path
 
 from . import backtest as backtest_mod
 from . import config as config_mod
+from . import diagnostico as diagnostico_mod
 from . import informe as informe_mod
+from . import informe_html as informe_html_mod
 from . import metricas as metricas_mod
 from . import universo as universo_mod
 from . import validacion as validacion_mod
 from .datos.almacen import Instantanea
+from .datos.enrutador import Enrutador
 from .errores import ErrorEstrategia
 from .sectores import MapaSectores
 
@@ -33,21 +36,33 @@ DIR_DATOS = RAIZ / "datos"
 DIR_CACHE = DIR_DATOS / "cache"
 DIR_FOTOS = DIR_DATOS / "fotos"
 DIR_RESULTADOS = DIR_DATOS / "resultados"
+DIR_SITIO = RAIZ / "sitio"
 RUTA_CONSULTAS = DIR_DATOS / "consultas_validacion.json"
 
 
-def _proveedor(nombre: str, cfg):
-    if nombre == "sintetico":
-        from .datos.sintetico import ProveedorSintetico
+def _enrutador(cfg, forzar: str | None = None) -> Enrutador:
+    """El enrutador de fuentes, con la opcion de forzar una sola desde el CLI.
 
-        return ProveedorSintetico(cfg)
-    from .datos.yfinance_proveedor import ProveedorYFinance
+    `--proveedor` sigue existiendo porque es comodo para los tests y para
+    trabajar sin red, pero el reparto normal vive en `reglas.yaml`.
+    """
+    if forzar:
+        cfg = cfg.con_fuente_unica(forzar)
+    return Enrutador(cfg)
 
-    return ProveedorYFinance(cfg)
 
+def _descargar(cfg, nombre_proveedor: str | None, inicio: date, fin: date) -> Instantanea:
+    enrutador = _enrutador(cfg, nombre_proveedor)
 
-def _descargar(cfg, nombre_proveedor: str, inicio: date, fin: date) -> Instantanea:
-    prov = _proveedor(nombre_proveedor, cfg)
+    problemas = enrutador.comprobar_disponibilidad()
+    if problemas:
+        for p in problemas:
+            print(f"  fuente no disponible -> {p}", file=sys.stderr)
+        raise SystemExit(2)
+
+    reparto = ", ".join(f"{k}={v}" for k, v in enrutador.reparto.items())
+    print(f"Fuentes: {reparto}")
+
     tickers = cfg.universo.tickers()
     indices = list(cfg.reglas.tecnico.indices_regimen.values())
     referencias = [r.ticker for r in cfg.implementacion.referencias.values()]
@@ -57,17 +72,22 @@ def _descargar(cfg, nombre_proveedor: str, inicio: date, fin: date) -> Instantan
     )
 
     print(f"Descargando precios de {len(tickers)} valores + indices y referencias...")
-    precios = prov.precios(tickers + indices + referencias, inicio, fin)
+    precios = enrutador.precios(tickers + indices + referencias, inicio, fin)
     print(f"Descargando fundamentales de {len(tickers)} valores...")
-    fundamentales = prov.fundamentales(tickers, inicio, fin)
+    fundamentales = enrutador.fundamentales(tickers, inicio, fin)
     print("Descargando tipos de cambio...")
-    fx = prov.fx(divisas, inicio, fin)
+    fx = enrutador.fx(divisas, inicio, fin)
     print("Leyendo sectores...")
-    sectores = prov.sectores(tickers)
+    sectores = enrutador.sectores(tickers)
+
+    # El origen refleja el reparto real, no una sola fuente: si los precios
+    # vienen de una y los fundamentales de otra, el informe tiene que decirlo.
+    usadas = enrutador.fuentes_usadas
+    origen = usadas[0] if len(usadas) == 1 else "+".join(usadas)
 
     return Instantanea(
         precios=precios, fundamentales=fundamentales, fx=fx, sectores=sectores,
-        fecha_descarga=date.today(), origen=prov.nombre,
+        fecha_descarga=date.today(), origen=origen,
     )
 
 
@@ -114,7 +134,23 @@ def cmd_foto(args, cfg) -> None:
 
     inicio = hoy - timedelta(days=int(args.anos * 365.25))
     inst = _descargar(cfg, args.proveedor, inicio, hoy)
-    inst.guardar(destino)
+
+    # Se escribe aparte y solo se mueve al final. Una descarga que se corta a
+    # medias no puede quedar archivada como si fuera la foto de la semana: el
+    # valor de estas fotos esta en poder confiar en ellas dentro de tres anios.
+    import shutil
+    import tempfile
+
+    temporal = Path(tempfile.mkdtemp(prefix="foto-", dir=str(DIR_FOTOS.parent)))
+    try:
+        DIR_FOTOS.mkdir(parents=True, exist_ok=True)
+        inst.guardar(temporal)
+        if destino.is_dir():
+            shutil.rmtree(destino)
+        shutil.move(str(temporal), str(destino))
+    finally:
+        if temporal.is_dir():
+            shutil.rmtree(temporal, ignore_errors=True)
     print(f"Foto de {ano}-S{semana:02d} guardada en {destino}.")
 
 
@@ -164,6 +200,33 @@ def cmd_senales(args, cfg) -> None:
     if not rech.empty and args.detalle:
         print("\nRechazos de esa fecha:\n")
         print(rech.to_string(index=False))
+
+
+def cmd_diagnostico(args, cfg) -> None:
+    """Que resuelve cada fuente y que no, ticker a ticker.
+
+    Pensado para la primera ejecucion con datos reales: da la lista entera de
+    cosas que arreglar en vez de reventar en el ticker numero 37.
+    """
+    fin = args.fecha or date.today()
+    inicio = fin - timedelta(days=int(args.anos * 365.25))
+    if args.proveedor:
+        cfg = cfg.con_fuente_unica(args.proveedor)
+
+    filas = diagnostico_mod.ejecutar(cfg, inicio, fin)
+    texto = diagnostico_mod.a_texto(filas, cfg, detalle=args.detalle)
+    print(texto)
+
+    DIR_RESULTADOS.mkdir(parents=True, exist_ok=True)
+    ruta = DIR_RESULTADOS / f"diagnostico_{date.today().isoformat()}.md"
+    ruta.write_text(texto, encoding="utf-8")
+    print(f"\nGuardado en {ruta}")
+
+    utilizables = sum(1 for f in filas if f.utilizable)
+    if utilizables < len(filas):
+        # Codigo de salida distinto de cero para que CI se entere, pero sin
+        # tratarlo como un fallo: un universo con huecos sigue siendo operable.
+        raise SystemExit(0 if utilizables else 1)
 
 
 def cmd_backtest(args, cfg) -> None:
@@ -225,8 +288,26 @@ def cmd_informe(args, cfg) -> None:
 def _guardar_informe(inf, texto: str, args) -> None:
     DIR_RESULTADOS.mkdir(parents=True, exist_ok=True)
     marca = "sintetico_" if inf.sintetico else ""
-    ruta = DIR_RESULTADOS / f"informe_{marca}{date.today().isoformat()}.md"
-    ruta.write_text(texto, encoding="utf-8")
+    formato = getattr(args, "formato", "md")
+
+    if formato in ("md", "ambos"):
+        ruta = DIR_RESULTADOS / f"informe_{marca}{date.today().isoformat()}.md"
+        ruta.write_text(texto, encoding="utf-8")
+        print(f"\nInforme guardado en {ruta}")
+
+    if formato in ("html", "ambos"):
+        # El sitio se despliega entero, asi que el informe de esta semana es el
+        # index y ademas queda archivado por semana: poder ver que decia el
+        # sistema una semana concreta es justo lo que hace que no valga
+        # reescribir la historia.
+        DIR_SITIO.mkdir(parents=True, exist_ok=True)
+        (DIR_SITIO / "informes").mkdir(exist_ok=True)
+        pagina = informe_html_mod.a_html(inf)
+        ano, semana, _ = date.today().isocalendar()
+        archivo = DIR_SITIO / "informes" / f"{marca}{ano}-S{semana:02d}.html"
+        archivo.write_text(pagina, encoding="utf-8")
+        (DIR_SITIO / "index.html").write_text(pagina, encoding="utf-8")
+        print(f"\nSitio generado en {DIR_SITIO} (index.html y {archivo.name})")
     inf.curva.to_parquet(DIR_RESULTADOS / f"curva_{args.proveedor}.parquet", index=False)
     if not inf.operaciones.empty:
         inf.operaciones.to_parquet(
@@ -240,7 +321,6 @@ def _guardar_informe(inf, texto: str, args) -> None:
         inf.sensibilidad.to_parquet(
             DIR_RESULTADOS / f"sensibilidad_{args.proveedor}.parquet", index=False
         )
-    print(f"\nInforme guardado en {ruta}")
 
 
 # --------------------------------------------------------------------------
@@ -262,9 +342,10 @@ def construir_parser() -> argparse.ArgumentParser:
         help="directorio de configuracion (por defecto config/)",
     )
     p.add_argument(
-        "--proveedor", choices=["sintetico", "yfinance"], default="sintetico",
-        help="de donde salen los datos. 'sintetico' no necesita red y es el "
-             "que se usa en los tests; 'yfinance' descarga datos reales.",
+        "--proveedor", default="sintetico",
+        help="fuerza UNA sola fuente para todos los tipos de dato, ignorando el "
+             "reparto de reglas.yaml. Comodo para trabajar sin red "
+             "('sintetico') o para probar una fuente concreta.",
     )
     sub = p.add_subparsers(dest="comando", required=True)
 
@@ -292,13 +373,24 @@ def construir_parser() -> argparse.ArgumentParser:
         "--periodo", choices=["diseno", "validacion", "todo"], default="diseno",
         help="'validacion' abre el periodo reservado y anota la consulta",
     )
+    b.add_argument("--formato", choices=["md", "html", "ambos"], default="md")
     b.set_defaults(func=cmd_backtest)
 
+    g = sub.add_parser(
+        "diagnostico", help="que resuelve cada fuente y que no, ticker a ticker"
+    )
+    g.add_argument("--fecha", type=_fecha, default=None)
+    g.add_argument("--anos", type=float, default=8.0)
+    g.add_argument("--detalle", action="store_true")
+    g.set_defaults(func=cmd_diagnostico)
+
     v = sub.add_parser("validar", help="backtest de diseno mas analisis de sensibilidad")
+    v.add_argument("--formato", choices=["md", "html", "ambos"], default="md")
     v.set_defaults(func=cmd_validar)
 
     i = sub.add_parser("informe", help="alias de backtest, guarda el informe")
     i.add_argument("--periodo", choices=["diseno", "validacion", "todo"], default="todo")
+    i.add_argument("--formato", choices=["md", "html", "ambos"], default="ambos")
     i.set_defaults(func=cmd_informe)
 
     return p

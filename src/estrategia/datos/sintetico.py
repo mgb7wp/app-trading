@@ -32,7 +32,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import Config
-from .proveedor import Proveedor
+from .proveedor import Capacidades, Proveedor
 
 SEMILLA_MAESTRA = 20240915
 
@@ -85,6 +85,17 @@ def _rng(*partes: object) -> np.random.Generator:
     return np.random.default_rng(semilla & 0xFFFFFFFF)
 
 
+def _precio_inicial(ticker: str) -> float:
+    """Precio de partida de un valor, con su propia semilla.
+
+    Tiene generador propio para que los fundamentales puedan dimensionar las
+    acciones en circulacion contra el mismo precio que va a tener la serie, y asi
+    el EV/EBIT sintetico salga en un rango realista en vez de depender de dos
+    escalas independientes.
+    """
+    return float(_rng("precio_inicial", ticker).uniform(8.0, 220.0))
+
+
 class ProveedorSintetico(Proveedor):
     """Genera precios, fundamentales y divisas deterministas."""
 
@@ -93,6 +104,25 @@ class ProveedorSintetico(Proveedor):
     def __init__(self, cfg: Config) -> None:
         self._cfg = cfg
         self._cache_indices: dict[str, pd.Series] = {}
+
+    @property
+    def capacidades(self) -> Capacidades:
+        return Capacidades(
+            tipos=("precios", "fundamentales", "divisas", "sectores"),
+            anios_fundamentales=None,
+            # Las fechas de publicacion son inventadas a partir del retraso, no
+            # reales: el informe tiene que seguir avisando de que el dato es
+            # reconstruido tambien con el proveedor sintetico.
+            fechas_publicacion_reales=False,
+            cifras_reexpresadas=True,
+            incluye_deslistadas=False,
+            mercados=tuple(self._cfg.reglas.mercados_por_id),
+            necesita_clave=False,
+            notas=(
+                "DATOS INVENTADOS. No describen ningun mercado; sirven para "
+                "comprobar que el motor hace lo que dice.",
+            ),
+        )
 
     # -- precios -----------------------------------------------------------
 
@@ -212,8 +242,7 @@ class ProveedorSintetico(Proveedor):
                 fin = min(n, pos + 250)
                 retornos[pos:fin] += s.magnitud / max(fin - pos, 1)
 
-        precio_inicial = float(rng.uniform(8.0, 220.0))
-        return precio_inicial * np.exp(np.cumsum(retornos))
+        return _precio_inicial(ticker) * np.exp(np.cumsum(retornos))
 
     def _ohlcv(
         self,
@@ -362,6 +391,8 @@ class ProveedorSintetico(Proveedor):
             deuda_base = float(rng.normal(1.9, 1.15))
             ev_ebit_base = float(rng.uniform(7.0, 26.0))
             ventas_base = float(rng.uniform(300.0, 9000.0))
+            precio_tipico = _precio_inicial(ticker)
+            divisa = self._cfg.reglas.mercado(mercado_id).divisa
 
             ano_ini, ano_fin = inicio.year - 1, fin.year
             for ano in range(ano_ini, ano_fin + 1):
@@ -381,8 +412,6 @@ class ProveedorSintetico(Proveedor):
                 ebitda = ebit * 1.28
                 flujo = ebit * float(rng.uniform(0.35, 0.95))
                 patrimonio = ventas * float(rng.uniform(0.35, 1.1))
-                ev = ebit * ev_ebit_base
-
                 if especial == "ebit_negativo" and ano >= ano_ini + 1:
                     # EBIT negativo: un percentil inverso ingenuo la pondria
                     # como la mas barata del mercado.
@@ -406,6 +435,13 @@ class ProveedorSintetico(Proveedor):
 
                 deuda_neta = deuda_ebitda * ebitda
 
+                # El EV objetivo fija cuantas acciones hay en circulacion, para
+                # que al recalcularlo en la fecha de decision con el precio de
+                # ese dia salga un EV/EBIT en un rango realista en lugar de
+                # depender de dos escalas independientes.
+                ev = ebit * ev_ebit_base
+                acciones = max((ev - deuda_neta) / precio_tipico, 1.0)
+
                 filas.append(
                     {
                         "ticker": ticker,
@@ -426,6 +462,9 @@ class ProveedorSintetico(Proveedor):
                         "ebit": ebit,
                         "ev": ev,
                         "patrimonio_neto": patrimonio,
+                        "acciones_en_circulacion": acciones,
+                        "divisa_reporte": divisa,
+                        "divisa_cotizacion": divisa,
                     }
                 )
 

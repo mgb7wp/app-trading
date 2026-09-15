@@ -92,14 +92,16 @@ st.sidebar.title("Estrategia mixta")
 proveedores = [d.name for d in DIR_CACHE.iterdir() if d.is_dir()] if DIR_CACHE.is_dir() else []
 if not proveedores:
     st.error(
-        "No hay datos en cache. Ejecuta primero:\n\n"
-        "```\nestrategia --proveedor sintetico datos\n```"
+        "No hay datos disponibles todavia.\n\n"
+        "Si estas en local: `estrategia --proveedor sintetico datos`"
     )
     st.stop()
 
 proveedor = st.sidebar.selectbox("Proveedor de datos", proveedores)
 cfg, inst = cargar(proveedor)
 division = validacion_mod.dividir(inst, cfg)
+
+MODO_PUBLICO = cfg.reglas.panel.modo_publico
 
 st.sidebar.caption(
     f"Descarga: {inst.fecha_descarga or 'desconocida'}  \n"
@@ -297,7 +299,21 @@ else:
 
     pct = cfg.reglas.validacion.sensibilidad_pct
     st.subheader(f"Sensibilidad (±{pct:.0%})")
-    if st.button("Ejecutar analisis de sensibilidad (tarda varios minutos)"):
+
+    if MODO_PUBLICO:
+        # El analisis corre unos treinta backtests. Dejar ese boton abierto a
+        # internet en la maquina de uno es regalar un boton de "ocupame la CPU".
+        st.info(
+            "El analisis de sensibilidad esta desactivado en modo publico: son "
+            "unos treinta backtests y este panel es accesible desde internet. "
+            "Ejecutalo en local con `estrategia validar`, que ademas guarda el "
+            "resultado en `datos/resultados/`."
+        )
+        ruta_sens = RAIZ / "datos" / "resultados" / f"sensibilidad_{proveedor}.parquet"
+        if ruta_sens.is_file():
+            st.caption("Ultimo analisis guardado:")
+            st.dataframe(pd.read_parquet(ruta_sens), use_container_width=True)
+    elif st.button("Ejecutar analisis de sensibilidad (tarda varios minutos)"):
         division_d = validacion_mod.dividir(inst, cfg)
         with st.spinner("Corriendo una variante por parametro y sentido..."):
             sens = validacion_mod.sensibilidad(

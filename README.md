@@ -8,7 +8,9 @@ con el riesgo y la cartera medidos en euros.
 
 `ESTRATEGIA.md` es la fuente de verdad: si el código y el documento no coinciden,
 manda el documento. Los puntos donde el documento admite dos lecturas o no llega
-están resueltos y explicados en [`SUPUESTOS.md`](SUPUESTOS.md).
+están resueltos y explicados en [`SUPUESTOS.md`](SUPUESTOS.md). De dónde salen
+los datos y cómo se añade una fuente nueva, en [`FUENTES.md`](FUENTES.md); cómo
+se publica el informe y se expone el panel, en [`DESPLIEGUE.md`](DESPLIEGUE.md).
 
 > **Esto no es un consejo de inversión.** Los parámetros de `config/reglas.yaml`
 > son un punto de partida razonable, no valores optimizados. Un backtest es una
@@ -40,7 +42,13 @@ estrategia --proveedor yfinance backtest --periodo diseno
 # 5. Backtest más análisis de sensibilidad
 estrategia --proveedor yfinance validar
 
-# 6. Panel interactivo
+# 6. Qué resuelve cada fuente y qué no (hazlo lo primero con datos reales)
+estrategia --proveedor yfinance diagnostico --anos 8 --detalle
+
+# 7. Informe HTML publicable, en sitio/
+estrategia informe --periodo todo --formato ambos
+
+# 8. Panel interactivo
 streamlit run panel/app.py
 ```
 
@@ -86,7 +94,7 @@ valores sueltos.
 
 | Fichero | Qué contiene |
 |---|---|
-| `reglas.yaml` | Los parámetros de la estrategia. Copia del bloque de `ESTRATEGIA.md` más las claves añadidas en la v0.3, cada una marcada y justificada. |
+| `reglas.yaml` | Los parámetros de la estrategia, y en `proveedor_datos` de qué fuente sale cada tipo de dato. Copia del bloque de `ESTRATEGIA.md` más las claves añadidas después, cada una marcada y justificada. |
 | `universo.yaml` | Los tickers por mercado. **Lista de partida sin verificar**: revísala la primera vez que descargues datos reales. |
 | `impuestos_transaccion.yaml` | Impuesto de transacción por país, con su lado, su vigencia y las listas anuales. **Sin verificar contra la fuente oficial.** |
 | `implementacion.yaml` | Tablas técnicas: calendario de cada mercado, ETF de las referencias, mapeo de sectores y pares de divisas. |
@@ -105,7 +113,8 @@ src/estrategia/
   indicadores.py   Medias, ATR de Wilder y momentum, precalculados por valor.
   calendario.py    Sesiones por mercado y corte semanal. Único sitio que habla con exchange_calendars.
   sectores.py      Traduce los sectores del proveedor a las categorías del documento.
-  datos/           Proveedores (yfinance y sintético), almacén y vista a fecha.
+  datos/           Fuentes, enrutador, contrato, almacén y vista a fecha.
+  diagnostico.py   Qué resuelve cada fuente y qué no, ticker a ticker.
   universo.py      Liquidez y exclusión de sectores, evaluadas a fecha.
   fundamental.py   Mínimos, trampas de signo, percentiles y puntuación 0-100.
   tecnico.py       Señal técnica y régimen de mercado.
@@ -119,6 +128,7 @@ src/estrategia/
   metricas.py      CAGR, drawdown, Sharpe, desgloses.
   validacion.py    División diseño/validación y sensibilidad.
   informe.py       Métricas, desgloses y avisos.
+  informe_html.py  El informe como página autocontenida, con SVG en línea.
   cli.py           Comandos.
 panel/app.py       Panel de Streamlit. Solo lee y pinta.
 ```
@@ -126,6 +136,15 @@ panel/app.py       Panel de Streamlit. Solo lee y pinta.
 Las capas se respetan de arriba abajo y hay un test que lo comprueba recorriendo
 los `import`. Sin esa disciplina aparece el ciclo típico de un proyecto así:
 `cartera` necesita `riesgo`, que necesita `selección`, que necesita `cartera`.
+
+### Las fuentes
+
+Cada tipo de dato tiene una fuente dueña, declarada en configuración, de modo que
+se pueden combinar los precios gratuitos de una con los fundamentales de otra. El
+enrutador es el único sitio por el que pasan todos los datos, y hace ahí dos
+cosas que no se pueden dejar a la buena voluntad de cada adaptador: estampar la
+procedencia en cada fila y aplicar un contrato que rechaza los lotes mal
+formados. El detalle está en [`FUENTES.md`](FUENTES.md).
 
 ### Las tres piezas que concentran el riesgo
 
@@ -194,18 +213,22 @@ dice menos de lo que parece. El informe las repite en cada ejecución.
 
 ## Estado
 
-Todo lo que pide la versión 1 del documento está implementado y probado contra
-el proveedor sintético: configuración, universo, filtros fundamental y técnico,
-selección, stops por ATR, tamaño de posición, motor de backtest, costes e
-impuestos por país, métricas y desgloses, validación con sensibilidad, informe,
-CLI y panel.
+Todo lo que pide la versión 1 del documento está implementado y probado contra el
+proveedor sintético, más el reparto de fuentes, el adaptador de EODHD, el informe
+HTML publicable y el ciclo semanal de CI.
 
-**No se ha podido ejecutar contra datos reales**: el entorno donde se desarrolló
-no tiene salida a Yahoo Finance. El camino de yfinance está escrito y las partes
-que se pueden comprobar sin red tienen tests, pero la primera ejecución con
-`--proveedor yfinance` en tu máquina es la que dirá si los tickers, los sectores
-y los campos de los estados financieros salen como se espera. Es lo primero que
-conviene hacer, y lo primero que hay que revisar si algo no cuadra.
+**Nada se ha ejecutado nunca contra datos reales, ni contra Cloudflare.** El
+entorno donde se desarrolló bloquea Yahoo Finance, EODHD y Cloudflare por
+política de red. Lo que hay está probado contra datos sintéticos y contra
+respuestas grabadas; la primera ejecución de verdad es la tuya o la del primer
+`workflow_dispatch`, y es la que dirá si los tickers, los sectores y los campos
+de los estados financieros salen como se espera.
+
+Empieza por ahí:
+
+```bash
+estrategia --proveedor yfinance diagnostico --anos 8 --detalle
+```
 
 Fuera de la versión 1, como dice el documento: entrada por RSI, salida por
 tiempo, métricas para bancos y aseguradoras, fiscalidad de plusvalías, cobertura

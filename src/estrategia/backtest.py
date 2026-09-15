@@ -307,7 +307,9 @@ def _revisar(
         senal = tecnico_mod.senal(ticker, mercado_id, dia, vista, cfg)
         if senal is None:
             continue
-        aprueba = fundamental_mod.sigue_aprobando(ticker, pos.sector, dia, vista, cfg)
+        aprueba = fundamental_mod.sigue_aprobando(
+            ticker, pos.sector, dia, vista, cfg, senal.cierre
+        )
         salida = salidas_mod.evaluar_salida_semanal(
             pos, senal.cierre, senal.media_larga, aprueba, cfg
         )
@@ -344,8 +346,13 @@ def _revisar(
         for ticker, eleg in del_mercado.items():
             if not eleg.elegible:
                 continue
+            # El precio de la fecha de decision entra en el calculo del EV: la
+            # valoracion tiene que moverse con el precio, no quedarse congelada
+            # entre publicaciones de resultados.
+            senal_valor = tecnico_mod.senal(ticker, mercado_id, dia, vista, cfg)
             ratios = fundamental_mod.ratios_de(
-                ticker, vista.fundamentales(ticker), cfg, dia
+                ticker, vista.fundamentales(ticker), cfg, dia,
+                senal_valor.cierre if senal_valor else None,
             )
             if ratios is not None:
                 cohorte[ticker] = (ratios, mercado_id, eleg.sector)

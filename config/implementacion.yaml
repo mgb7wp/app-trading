@@ -36,6 +36,17 @@ referencias:
     nombre: "iShares Core MSCI EM IMI UCITS ETF (Acc)"
     divisa: EUR
 
+# Codigos de bolsa de EODHD. NO coinciden con los sufijos de Yahoo: lo que en
+# Yahoo es `RELIANCE.NS` alli es `RELIANCE.NSE`, y `SAP.DE` es `SAP.XETRA`.
+# Sin verificar contra la API: es de las primeras cosas que dira el diagnostico
+# la primera vez que se ejecute con clave.
+codigos_eodhd:
+  es: MC
+  us: US
+  de: XETRA
+  in: NSE
+  br: SA
+
 # Par de divisas con el que se convierte cada moneda a la base (EUR).
 # El codigo invierte el par cuando hace falta.
 divisas:

@@ -55,6 +55,7 @@ Disparador de entrada por retroceso (RSI), salida por tiempo, métricas específ
 |       | 0.1     | Versión inicial (solo España) | — | — |
 |       | 0.2     | Universo multi-mercado (desarrollados + emergentes), divisa base, percentiles por mercado, impuestos y deslizamiento por país, proveedor de datos gratuito (yfinance) | Ampliar el alcance a una cartera global | — |
 |       | 0.3     | Cohorte de percentiles = universo elegible, posiciones de trazado de Hazen, suelo `min_empresas_percentil`; reglas de signo para EV/EBIT, EBITDA y patrimonio negativos; corte semanal global en UTC; reserva de huecos en el momento de decidir; FX de D-1 para decidir y de D para valorar; `vigente_desde` en los impuestos; lote por mercado; antigüedad máxima del dato fundamental | Corregir sesgos y degeneraciones detectados al implementar la v0.2 | — |
+|       | 0.4     | Reparto de fuentes por tipo de dato con contrato verificable y procedencia por fila; EV calculado en la fecha de decisión a partir de acciones en circulación y precio; adaptador EODHD; informe HTML publicable; `panel.modo_publico` | Conectar fuentes reales y publicar el informe | — |
 
 ## Configuración (`config/reglas.yaml`)
 

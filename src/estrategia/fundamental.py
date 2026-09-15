@@ -58,6 +58,9 @@ class Ratios:
     fecha_publicacion: date
     origen_pit: str
     motivo_invalidez: MotivoRechazo | None = None
+    # Por que no se ha podido calcular el EV, cuando no se ha podido. Lo usa el
+    # diagnostico: una cartera entera sin EV significa media puntuacion muerta.
+    motivo_sin_ev: str | None = None
 
 
 def percentiles_hazen(valores: pd.Series) -> pd.Series:
@@ -73,10 +76,58 @@ def percentiles_hazen(valores: pd.Series) -> pd.Series:
     return (rangos - 0.5) / n * 100.0
 
 
+def valor_empresa(
+    ultimo: pd.Series, precio_local: float | None
+) -> tuple[float | None, str | None]:
+    """EV en la fecha de decision, y el motivo si no se ha podido calcular.
+
+    El EV no es un dato del ejercicio. El EBIT es anual y mira hacia atras, pero
+    la valoracion tiene que reflejar el precio de HOY, asi que se calcula cada
+    vez a partir de las acciones en circulacion a cierre del ultimo periodo
+    publicado —que es un dato puntual, del balance— y del precio del dia:
+
+        EV = acciones x precio_local + deuda_neta
+
+    Sin precio se usa el EV almacenado, que es lo que da el proveedor sintetico.
+
+    La comprobacion de divisas no es un detalle: los estados financieros vienen
+    en la divisa en que REPORTA la empresa, que no siempre es la de su
+    cotizacion. Multiplicar acciones por un precio en otra divisa da un EV sin
+    ningun sentido y convierte a una empresa normal en baratisima o carisima
+    segun el par. Cuando no coinciden, no hay EV.
+    """
+    almacenado = _num(ultimo.get("ev"))
+    if precio_local is None:
+        return (almacenado, None if almacenado else "sin_ev_almacenado")
+
+    acciones = _num(ultimo.get("acciones_en_circulacion"))
+    if acciones is None or acciones <= 0:
+        if almacenado:
+            return almacenado, None
+        return None, "sin_acciones_en_circulacion"
+
+    reporte = ultimo.get("divisa_reporte")
+    cotizacion = ultimo.get("divisa_cotizacion")
+    if reporte and cotizacion and str(reporte) != str(cotizacion):
+        return None, f"divisas_distintas:{reporte}/{cotizacion}"
+
+    deuda_neta = _num(ultimo.get("deuda_neta")) or 0.0
+    ev = acciones * precio_local + deuda_neta
+    return (ev if ev > 0 else None), (None if ev > 0 else "ev_no_positivo")
+
+
 def ratios_de(
-    ticker: str, fundamentales: pd.DataFrame, cfg: Config, fecha: date
+    ticker: str,
+    fundamentales: pd.DataFrame,
+    cfg: Config,
+    fecha: date,
+    precio_local: float | None = None,
 ) -> Ratios | None:
-    """Ratios del ultimo ejercicio publicado, con las trampas de signo cortadas."""
+    """Ratios del ultimo ejercicio publicado, con las trampas de signo cortadas.
+
+    `precio_local` es el precio de la fecha de decision. Si se pasa, el EV se
+    calcula con el; si no, se usa el que venga almacenado.
+    """
     if fundamentales.empty:
         return None
     anuales = fundamentales[fundamentales["periodo"] == "anual"]
@@ -107,7 +158,7 @@ def ratios_de(
     patrimonio = _num(ultimo.get("patrimonio_neto"))
     ebit = _num(ultimo.get("ebit"))
     ebitda = _num(ultimo.get("ebitda"))
-    ev = _num(ultimo.get("ev"))
+    ev, motivo_sin_ev = valor_empresa(ultimo, precio_local)
     ventas = _num(ultimo.get("ventas"))
     deuda_neta = _num(ultimo.get("deuda_neta"))
 
@@ -140,6 +191,7 @@ def ratios_de(
         flujo_caja_libre=_num(ultimo.get("flujo_caja_libre")),
         deuda_neta_ebitda=deuda_ebitda,
         ev_ebit=ev_ebit,
+        motivo_sin_ev=motivo_sin_ev if ev_ebit is None else None,
         **base,
     )
 
@@ -296,7 +348,12 @@ def _ok(v) -> bool:
 
 
 def sigue_aprobando(
-    ticker: str, sector: str, fecha: date, vista, cfg: Config
+    ticker: str,
+    sector: str,
+    fecha: date,
+    vista,
+    cfg: Config,
+    precio_local: float | None = None,
 ) -> bool:
     """Si una empresa en cartera sigue pasando el filtro.
 
@@ -307,7 +364,7 @@ def sigue_aprobando(
     """
     if not cfg.reglas.fundamental.activo:
         return True
-    ratios = ratios_de(ticker, vista.fundamentales(ticker), cfg, fecha)
+    ratios = ratios_de(ticker, vista.fundamentales(ticker), cfg, fecha, precio_local)
     if ratios is None:
         return False
     aprueba, _ = aprueba_minimos(ratios, sector, cfg)

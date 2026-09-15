@@ -41,9 +41,47 @@ class _Base(BaseModel):
 
 
 class ProveedorDatosCfg(_Base):
-    nombre: str
+    """De donde sale cada tipo de dato.
+
+    Admite dos formas. La corta, `nombre: yfinance`, que es la del documento y
+    significa "esta fuente para todo". Y el reparto por especialidad, una clave
+    por tipo de dato, que es lo que permite quedarse con los precios gratuitos de
+    una fuente y traer los fundamentales de otra con historico largo y fechas de
+    publicacion reales.
+
+    Se aceptan las dos para que la configuracion del documento siga cargando tal
+    cual; lo especifico gana sobre el atajo.
+    """
+
+    nombre: str | None = None
+    precios: str | None = None
+    fundamentales: str | None = None
+    divisas: str | None = None
+    sectores: str | None = None
     fundamentales_anos_disponibles: int
     ampliacion_futura: str | None = None
+
+    def fuente_de(self, tipo: str) -> str:
+        """Que fuente sirve ese tipo de dato."""
+        especifica = getattr(self, tipo, None)
+        if especifica:
+            return especifica
+        if self.nombre:
+            return self.nombre
+        raise ValueError(
+            f"no hay fuente para '{tipo}': define proveedor_datos.{tipo} o "
+            f"proveedor_datos.nombre"
+        )
+
+    @model_validator(mode="after")
+    def _hay_alguna_fuente(self) -> "ProveedorDatosCfg":
+        if not self.nombre and not any(
+            (self.precios, self.fundamentales, self.divisas, self.sectores)
+        ):
+            raise ValueError(
+                "proveedor_datos necesita al menos `nombre` o una fuente por tipo"
+            )
+        return self
 
 
 class CarteraCfg(_Base):
@@ -216,6 +254,17 @@ class CostesCfg(_Base):
             ) from exc
 
 
+class PanelCfg(_Base):
+    """Ajustes del panel interactivo.
+
+    `modo_publico` existe porque el panel se sirve desde la maquina de casa a
+    traves de un tunel y sin autenticacion: cualquiera que de con la URL puede
+    pulsar lo que haya. Lo caro se desactiva y las rutas locales no se ensenan.
+    """
+
+    modo_publico: bool = False
+
+
 class MetricasCfg(_Base):
     tasa_libre_riesgo_anual: float
     periodicidad_sharpe: Literal["diaria", "semanal"]
@@ -242,6 +291,7 @@ class Reglas(_Base):
     riesgo: RiesgoCfg
     costes: CostesCfg
     referencias_informe: list[str]
+    panel: PanelCfg = Field(default_factory=PanelCfg)
     metricas: MetricasCfg
     validacion: ValidacionCfg
 
@@ -288,6 +338,7 @@ class ReferenciaCfg(_Base):
 
 class Implementacion(_Base):
     calendarios: dict[str, str]
+    codigos_eodhd: dict[str, str] = Field(default_factory=dict)
     referencias: dict[str, ReferenciaCfg]
     divisas: dict[str, str | None]
     sectores: dict[str, str]
@@ -395,6 +446,27 @@ class Config(_Base):
     universo: Universo
     impuestos: Impuestos
     dir_config: Path
+
+    def con_fuente_unica(self, nombre: str) -> "Config":
+        """Copia con una sola fuente sirviendo todos los tipos de dato.
+
+        Es lo que hay detras de `--proveedor`: util para los tests y para
+        trabajar sin red, pero el reparto de verdad vive en `reglas.yaml`.
+        """
+        reglas = self.reglas.model_copy(
+            update={
+                "proveedor_datos": self.reglas.proveedor_datos.model_copy(
+                    update={
+                        "nombre": nombre,
+                        "precios": None,
+                        "fundamentales": None,
+                        "divisas": None,
+                        "sectores": None,
+                    }
+                )
+            }
+        )
+        return self.model_copy(update={"reglas": reglas})
 
     @model_validator(mode="after")
     def _coherencia_entre_ficheros(self) -> "Config":

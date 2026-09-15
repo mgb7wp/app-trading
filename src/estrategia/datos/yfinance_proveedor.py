@@ -26,13 +26,14 @@ dejaron de cotizar.
 
 from __future__ import annotations
 
+import time
 from datetime import date, timedelta
 
 import pandas as pd
 
 from ..config import Config
 from ..errores import ErrorDatos
-from .proveedor import Proveedor
+from .proveedor import Capacidades, Proveedor
 
 
 def ajustar_ohlc(bruto: pd.DataFrame) -> pd.DataFrame:
@@ -68,6 +69,27 @@ def estimar_fecha_publicacion(
     return fin_periodo + timedelta(days=dias)
 
 
+def con_reintentos(fn, intentos: int = 4, espera_inicial: float = 2.0):
+    """Ejecuta algo que sale a la red, reintentando con espera creciente.
+
+    Yahoo limita por volumen y falla de forma intermitente; 140 tickers en una
+    tirada lo tocan con facilidad. Reintentar con espera creciente convierte una
+    descarga fallida en una descarga lenta, que es mucho mejor resultado.
+    """
+    espera = espera_inicial
+    ultimo: Exception | None = None
+    for intento in range(intentos):
+        try:
+            return fn()
+        except Exception as exc:  # noqa: BLE001 - se reintenta cualquier fallo de red
+            ultimo = exc
+            if intento == intentos - 1:
+                break
+            time.sleep(espera)
+            espera *= 2
+    raise ErrorDatos(f"fallo tras {intentos} intentos: {ultimo}") from ultimo
+
+
 def _primera_fila(df: pd.DataFrame | None, *nombres: str) -> pd.Series | None:
     """Primera fila cuyo indice coincide con alguno de los nombres dados.
 
@@ -89,6 +111,46 @@ class ProveedorYFinance(Proveedor):
 
     def __init__(self, cfg: Config) -> None:
         self._cfg = cfg
+        self._info: dict[str, dict] = {}
+
+    @property
+    def capacidades(self) -> Capacidades:
+        return Capacidades(
+            tipos=("precios", "fundamentales", "divisas", "sectores"),
+            anios_fundamentales=self._cfg.reglas.proveedor_datos.fundamentales_anos_disponibles,
+            # Yahoo no publica la fecha real en que se presentaron las cuentas,
+            # asi que hay que estimarla con el retraso configurado.
+            fechas_publicacion_reales=False,
+            # Y las cifras que devuelve estan reexpresadas a dia de hoy, que no
+            # es lo que se conocia entonces.
+            cifras_reexpresadas=True,
+            incluye_deslistadas=False,
+            mercados=tuple(self._cfg.reglas.mercados_por_id),
+            necesita_clave=False,
+            notas=(
+                "El historico fundamental es corto: el crecimiento de ventas a "
+                "tres anos necesita cuatro ejercicios publicados, asi que la "
+                "estrategia no puede operar hasta que llega el cuarto.",
+            ),
+        )
+
+    def info(self, ticker: str) -> dict:
+        """Ficha del valor, cacheada.
+
+        Son 140 llamadas lentas y con limite de volumen, y hacen falta dos veces
+        —para el sector y para las divisas—, asi que se piden una sola vez.
+        """
+        if ticker not in self._info:
+            try:
+                import yfinance as yf
+
+                self._info[ticker] = con_reintentos(lambda: yf.Ticker(ticker).info) or {}
+            except Exception:
+                # Una ficha que no se puede leer no tumba la ejecucion: el valor
+                # se quedara fuera por sector desconocido y saldra en el
+                # diagnostico.
+                self._info[ticker] = {}
+        return self._info[ticker]
 
     # -- precios -----------------------------------------------------------
 
@@ -98,15 +160,17 @@ class ProveedorYFinance(Proveedor):
         if not tickers:
             return pd.DataFrame()
 
-        crudo = yf.download(
-            tickers=tickers,
-            start=inicio,
-            end=fin + timedelta(days=1),
-            auto_adjust=False,
-            actions=False,
-            progress=False,
-            group_by="ticker",
-            threads=True,
+        crudo = con_reintentos(
+            lambda: yf.download(
+                tickers=tickers,
+                start=inicio,
+                end=fin + timedelta(days=1),
+                auto_adjust=False,
+                actions=False,
+                progress=False,
+                group_by="ticker",
+                threads=True,
+            )
         )
         if crudo is None or crudo.empty:
             raise ErrorDatos(
@@ -143,14 +207,16 @@ class ProveedorYFinance(Proveedor):
         if not pares:
             return pd.DataFrame(columns=["fecha", "divisa", "tasa"])
 
-        crudo = yf.download(
-            tickers=list(pares.values()),
-            start=inicio,
-            end=fin + timedelta(days=1),
-            auto_adjust=True,
-            progress=False,
-            group_by="ticker",
-            threads=True,
+        crudo = con_reintentos(
+            lambda: yf.download(
+                tickers=list(pares.values()),
+                start=inicio,
+                end=fin + timedelta(days=1),
+                auto_adjust=True,
+                progress=False,
+                group_by="ticker",
+                threads=True,
+            )
         )
         filas: list[pd.DataFrame] = []
         for divisa, par in pares.items():
@@ -173,18 +239,9 @@ class ProveedorYFinance(Proveedor):
         return pd.concat(filas, ignore_index=True)
 
     def sectores(self, tickers: list[str]) -> dict[str, str | None]:
-        import yfinance as yf
-
-        salida: dict[str, str | None] = {}
-        for ticker in tickers:
-            try:
-                info = yf.Ticker(ticker).info
-                salida[ticker] = info.get("sector")
-            except Exception:
-                # Un sector que no se puede leer se trata como desconocido, y
-                # `sectores.py` rechaza el valor en lugar de colarlo.
-                salida[ticker] = None
-        return salida
+        # Un sector que no se puede leer se queda como desconocido, y
+        # `sectores.py` rechaza el valor en lugar de colarlo.
+        return {t: self.info(t).get("sector") for t in tickers}
 
     # -- fundamentales -----------------------------------------------------
 
@@ -220,6 +277,21 @@ class ProveedorYFinance(Proveedor):
                 balance, "Cash And Cash Equivalents", "Cash Cash Equivalents And Short Term Investments"
             )
             flujo_f = _primera_fila(caja, "Free Cash Flow")
+            # Acciones a cierre del periodo: es un dato del balance, o sea
+            # puntual, no el numero de acciones de hoy. Con el se calcula el EV
+            # en la fecha de decision.
+            acciones_f = _primera_fila(
+                balance, "Ordinary Shares Number", "Share Issued",
+                "Common Stock Shares Outstanding",
+            )
+
+            ficha = self.info(ticker)
+            # Los estados financieros vienen en la divisa en que REPORTA la
+            # empresa, que no siempre es la de su cotizacion. Multiplicar
+            # acciones por un precio en otra divisa da un EV sin sentido, asi
+            # que se guardan las dos y quien calcule el ratio decide.
+            divisa_reporte = ficha.get("financialCurrency")
+            divisa_cotizacion = ficha.get("currency")
 
             for columna in resultados.columns:
                 fin_periodo = pd.Timestamp(columna).date()
@@ -263,8 +335,15 @@ class ProveedorYFinance(Proveedor):
                         "deuda_neta": deuda_neta,
                         "ebitda": ebitda,
                         "ebit": ebit,
-                        "ev": None,  # se completa con la capitalizacion al usarlo
+                        # El EV no se guarda: se calcula en la fecha de decision
+                        # como acciones x precio + deuda neta, porque el EBIT es
+                        # anual y mira hacia atras pero la valoracion tiene que
+                        # reflejar el precio de ese dia.
+                        "ev": None,
                         "patrimonio_neto": patrimonio,
+                        "acciones_en_circulacion": _valor(acciones_f, columna),
+                        "divisa_reporte": divisa_reporte,
+                        "divisa_cotizacion": divisa_cotizacion,
                     }
                 )
 
